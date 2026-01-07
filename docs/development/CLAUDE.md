@@ -18,12 +18,15 @@ them to multiple formats (Markdown, HTML, structured JSON) with comprehensive st
 ```text
 claude-sessions/
 ├── src/
-│   ├── __init__.py           # Package exports
-│   ├── claude_sessions.py    # Main CLI entry point
-│   ├── backup.py             # Incremental backup logic
-│   ├── formatters.py         # Format converters (MD, HTML, JSON)
-│   ├── stats.py              # Statistics generation
-│   └── prompts.py            # User prompts extraction
+│   ├── __init__.py              # Package exports
+│   ├── claude_sessions.py       # Main CLI entry point
+│   ├── backup.py                # Incremental backup logic
+│   ├── formatters.py            # Format converters (MD, HTML, JSON)
+│   ├── stats.py                 # Statistics generation
+│   ├── prompts.py               # User prompts extraction
+│   ├── parser.py                # Unified JSONL parsing
+│   ├── utils.py                 # Shared utilities
+│   └── search_conversations.py  # Search functionality
 ├── docs/
 │   ├── development/
 │   │   ├── CLAUDE.md         # This file
@@ -83,6 +86,8 @@ pytest
 2. **FormatConverter** (`formatters.py`): Converts JSONL to MD/HTML/JSON
 3. **StatisticsGenerator** (`stats.py`): Computes and renders statistics
 4. **PromptsExtractor** (`prompts.py`): Extracts user prompts to YAML
+5. **SessionParser** (`parser.py`): Unified JSONL parsing for all components
+6. **SearchEngine** (`search_conversations.py`): Multi-mode search (smart, exact, regex, semantic)
 
 ### Data Flow
 

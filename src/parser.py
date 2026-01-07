@@ -7,7 +7,7 @@ Unified JSONL parsing logic used by formatters and statistics modules.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     from utils import extract_text, parse_timestamp
@@ -18,7 +18,7 @@ except ImportError:
 class ParsedMessage:
     """Represents a parsed message from a Claude session."""
 
-    def __init__(self, data: Dict):
+    def __init__(self, data: Dict[str, Any]):
         self.type = data.get("type")
         self.role = data.get("role")
         self.content = data.get("content", "")
@@ -36,7 +36,7 @@ class ParsedMessage:
         self.usage = data.get("usage")
         self.stop_reason = data.get("stop_reason")
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary, excluding None values."""
         result = {}
         for key, value in self.__dict__.items():
@@ -75,7 +75,7 @@ class SessionParser:
 
         return messages
 
-    def parse_file_as_dicts(self, jsonl_path: Path) -> List[Dict]:
+    def parse_file_as_dicts(self, jsonl_path: Path) -> List[Dict[str, Any]]:
         """
         Parse a JSONL file and return list of dictionaries.
 
@@ -89,7 +89,7 @@ class SessionParser:
         """
         return [msg.to_dict() for msg in self.parse_file(jsonl_path)]
 
-    def _parse_entry(self, entry: Dict) -> Optional[ParsedMessage]:
+    def _parse_entry(self, entry: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse a single JSONL entry into a ParsedMessage."""
         entry_type = entry.get("type")
 
@@ -104,7 +104,7 @@ class SessionParser:
 
         return None
 
-    def _parse_user_message(self, entry: Dict) -> Optional[ParsedMessage]:
+    def _parse_user_message(self, entry: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse user message entry."""
         message = entry.get("message", {})
         content = message.get("content", "")
@@ -125,7 +125,7 @@ class SessionParser:
             "session_id": entry.get("sessionId"),
         })
 
-    def _parse_assistant_message(self, entry: Dict) -> Optional[ParsedMessage]:
+    def _parse_assistant_message(self, entry: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse assistant message entry."""
         message = entry.get("message", {})
         content = message.get("content", [])
@@ -178,7 +178,7 @@ class SessionParser:
             "stop_reason": message.get("stop_reason"),
         })
 
-    def _parse_tool_use(self, entry: Dict) -> Optional[ParsedMessage]:
+    def _parse_tool_use(self, entry: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse tool use entry."""
         tool = entry.get("tool", {})
         timestamp_str = entry.get("timestamp")
@@ -193,7 +193,7 @@ class SessionParser:
             "uuid": entry.get("uuid"),
         })
 
-    def _parse_tool_result(self, entry: Dict) -> Optional[ParsedMessage]:
+    def _parse_tool_result(self, entry: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse tool result entry."""
         result = entry.get("result", {})
         timestamp_str = entry.get("timestamp")

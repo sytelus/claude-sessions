@@ -113,6 +113,8 @@ The generated `stats.html` includes:
 |--------|-------------|---------|
 | `--backup` | Perform incremental backup | (default mode) |
 | `--list` | Show projects and status | - |
+| `--search` | Search conversations | - |
+| `--mode` | Search mode (smart/exact/regex/semantic) | `smart` |
 | `--input` | Source directory | `~/.claude/projects/` |
 | `--output` | Destination directory | `$OUTPUT_DIR` |
 | `--format` | Output formats | `markdown,html,data` |
@@ -162,15 +164,28 @@ pipx install claude-sessions
 ```
 </details>
 
-## Legacy Commands
+### `claude-sessions --search`
 
-For backwards compatibility, the v1.x commands still work:
+Search through your backed-up conversations:
 
 ```bash
-claude-extract    # Interactive UI for extraction
-claude-logs       # Alias for claude-extract
-claude-search     # Search conversations
+# Smart search (default) - handles typos, fuzzy matching
+claude-sessions --search "authentication bug"
+
+# Exact phrase matching
+claude-sessions --search "exact phrase" --mode exact
+
+# Regex pattern matching
+claude-sessions --search "def \w+_handler" --mode regex
+
+# Semantic search (requires spaCy)
+claude-sessions --search "error handling patterns" --mode semantic
 ```
+
+Search options:
+- `--mode`: Search mode (`smart`, `exact`, `regex`, `semantic`)
+- `--context`: Lines of context around matches (default: 150 chars)
+- `--max-results`: Maximum results to show (default: 20)
 
 ## Where Are Claude Code Logs?
 

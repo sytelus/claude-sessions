@@ -55,10 +55,6 @@ Issues = "https://github.com/ZeroSumQuant/claude-sessions/issues"
 
 [project.scripts]
 claude-sessions = "claude_sessions:main"
-# Legacy aliases for backwards compatibility
-claude-extract = "extract_claude_logs:launch_interactive"
-claude-logs = "extract_claude_logs:launch_interactive"
-claude-search = "search_cli:main"
 
 [tool.setuptools]
 py-modules = [
@@ -67,11 +63,9 @@ py-modules = [
     "formatters",
     "stats",
     "prompts",
-    "extract_claude_logs",
-    "interactive_ui",
-    "search_conversations",
-    "realtime_search",
-    "search_cli"
+    "parser",
+    "utils",
+    "search_conversations"
 ]
 
 [tool.setuptools.package-dir]

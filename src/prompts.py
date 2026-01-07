@@ -5,15 +5,16 @@ Prompts extraction for Claude Sessions.
 Extracts user prompts from session files into readable YAML format.
 """
 
-import json
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
-    from utils import extract_text
+    from parser import SessionParser
+    from utils import iter_project_dirs
 except ImportError:
-    from .utils import extract_text
+    from .parser import SessionParser
+    from .utils import iter_project_dirs
 
 try:
     import yaml
@@ -25,7 +26,10 @@ except ImportError:
 class PromptsExtractor:
     """Extracts user prompts from Claude session files."""
 
-    def extract_all(self, output_dir: Path) -> Dict:
+    def __init__(self) -> None:
+        self.parser = SessionParser()
+
+    def extract_all(self, output_dir: Path) -> Dict[str, int]:
         """
         Extract prompts from all projects in output directory.
 
@@ -41,12 +45,7 @@ class PromptsExtractor:
             "prompts": 0,
         }
 
-        for project_dir in output_dir.iterdir():
-            if not project_dir.is_dir():
-                continue
-            if project_dir.name in ["markdown", "html", "data"]:
-                continue
-
+        for project_dir in iter_project_dirs(output_dir):
             project_prompts = self._extract_project_prompts(project_dir)
             if project_prompts:
                 result["projects"] += 1
@@ -59,7 +58,7 @@ class PromptsExtractor:
 
         return result
 
-    def _extract_project_prompts(self, project_dir: Path) -> Optional[Dict]:
+    def _extract_project_prompts(self, project_dir: Path) -> Optional[Dict[str, Any]]:
         """Extract prompts from a single project."""
         jsonl_files = list(project_dir.glob("*.jsonl"))
         if not jsonl_files:
@@ -77,29 +76,21 @@ class PromptsExtractor:
 
         return project_data if project_data["sessions"] else None
 
-    def _extract_session_prompts(self, jsonl_file: Path) -> Optional[Dict]:
+    def _extract_session_prompts(self, jsonl_file: Path) -> Optional[Dict[str, Any]]:
         """Extract prompts from a single session file."""
-        session_data = {
+        session_data: Dict[str, Any] = {
             "session_id": jsonl_file.stem,
             "prompts": [],
         }
 
-        try:
-            with open(jsonl_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
+        # Use SessionParser to read the file
+        messages = self.parser.parse_file_as_dicts(jsonl_file)
 
-                        if entry.get("type") == "user":
-                            prompt = self._extract_user_prompt(entry)
-                            if prompt:
-                                session_data["prompts"].append(prompt)
-
-                    except json.JSONDecodeError:
-                        continue
-
-        except Exception:
-            return None
+        for msg in messages:
+            if msg.get("type") == "user":
+                prompt = self._extract_user_prompt(msg)
+                if prompt:
+                    session_data["prompts"].append(prompt)
 
         # Get first timestamp as session date
         if session_data["prompts"]:
@@ -109,13 +100,10 @@ class PromptsExtractor:
 
         return session_data if session_data["prompts"] else None
 
-    def _extract_user_prompt(self, entry: Dict) -> Optional[Dict]:
+    def _extract_user_prompt(self, entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Extract user prompt from entry."""
-        message = entry.get("message", {})
-        content = message.get("content", "")
-
-        # Extract text content
-        text = extract_text(content)
+        # SessionParser already extracts content as text
+        text = entry.get("content", "")
         if not text:
             return None
 
@@ -177,14 +165,14 @@ class PromptsExtractor:
 
         return False
 
-    def _save_prompts(self, project_prompts: Dict, output_path: Path):
+    def _save_prompts(self, project_prompts: Dict[str, Any], output_path: Path) -> None:
         """Save prompts to YAML file."""
         if YAML_AVAILABLE:
             self._save_as_yaml(project_prompts, output_path)
         else:
             self._save_as_yaml_manual(project_prompts, output_path)
 
-    def _save_as_yaml(self, data: Dict, output_path: Path):
+    def _save_as_yaml(self, data: Dict[str, Any], output_path: Path) -> None:
         """Save using PyYAML library."""
         # Custom Dumper that handles multiline strings
         class MultilineDumper(yaml.SafeDumper):
@@ -200,7 +188,7 @@ class PromptsExtractor:
         with open(output_path, "w", encoding="utf-8") as f:
             yaml.dump(data, f, Dumper=MultilineDumper, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-    def _save_as_yaml_manual(self, data: Dict, output_path: Path):
+    def _save_as_yaml_manual(self, data: Dict[str, Any], output_path: Path) -> None:
         """Save as YAML manually (without PyYAML dependency)."""
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(f"# User prompts for project: {data['project']}\n")

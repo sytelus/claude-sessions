@@ -9,18 +9,20 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 try:
     from backup import BackupManager
     from formatters import FormatConverter
     from stats import StatisticsGenerator
     from prompts import PromptsExtractor
+    from search_conversations import ConversationSearcher
 except ImportError:
     from .backup import BackupManager
     from .formatters import FormatConverter
     from .stats import StatisticsGenerator
     from .prompts import PromptsExtractor
+    from .search_conversations import ConversationSearcher
 
 
 # Constants
@@ -59,7 +61,7 @@ def get_output_dir(args_output: Optional[str]) -> Path:
     sys.exit(1)
 
 
-def parse_formats(format_str: str) -> list:
+def parse_formats(format_str: str) -> List[str]:
     """Parse comma-separated format string into list."""
     valid_formats = {"markdown", "html", "data"}
     formats = [f.strip().lower() for f in format_str.split(",")]
@@ -72,7 +74,7 @@ def parse_formats(format_str: str) -> list:
     return formats if formats else list(valid_formats)
 
 
-def cmd_backup(args):
+def cmd_backup(args: argparse.Namespace) -> None:
     """Execute backup command."""
     input_dir = Path(args.input).expanduser()
     output_dir = get_output_dir(args.output)
@@ -149,7 +151,90 @@ def cmd_backup(args):
     print("=" * 60)
 
 
-def cmd_list(args):
+def cmd_search(args: argparse.Namespace) -> None:
+    """Execute search command."""
+    input_dir = Path(args.input).expanduser()
+
+    print("=" * 60)
+    print("CLAUDE SESSIONS - SEARCH")
+    print("=" * 60)
+    print()
+
+    # Validate input directory
+    if not input_dir.exists():
+        print(f"Error: Input directory does not exist: {input_dir}")
+        sys.exit(1)
+
+    # Get search query
+    query = args.query
+    if not query:
+        try:
+            query = input("Enter search term: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled.")
+            sys.exit(1)
+
+    if not query:
+        print("Error: No search term provided.")
+        sys.exit(1)
+
+    print(f"Searching for: '{query}'")
+    print(f"Directory: {input_dir}")
+    print(f"Mode: {args.mode}")
+    print()
+
+    # Initialize searcher
+    searcher = ConversationSearcher()
+
+    # Perform search
+    results = searcher.search(
+        query=query,
+        search_dir=input_dir,
+        mode=args.mode,
+        speaker_filter=args.speaker,
+        max_results=args.max_results,
+        case_sensitive=args.case_sensitive,
+    )
+
+    if not results:
+        print(f"No matches found for '{query}'")
+        print()
+        print("Tips:")
+        print("  - Try a more general search term")
+        print("  - Search is case-insensitive by default")
+        print("  - Use --mode regex for pattern matching")
+        return
+
+    print(f"Found {len(results)} results:")
+    print("-" * 60)
+
+    # Group by file
+    by_file = {}
+    for result in results:
+        fname = result.file_path.name
+        if fname not in by_file:
+            by_file[fname] = []
+        by_file[fname].append(result)
+
+    # Display results
+    for i, (fname, file_results) in enumerate(by_file.items(), 1):
+        session_id = fname.replace('.jsonl', '')
+        print(f"\n{i}. Session: {session_id[:16]}... ({len(file_results)} matches)")
+
+        # Show first match preview
+        first = file_results[0]
+        preview = first.matched_content[:120].replace('\n', ' ')
+        speaker = first.speaker.title()
+        relevance = f"{first.relevance_score:.0%}"
+        print(f"   [{speaker}] (relevance: {relevance})")
+        print(f"   {preview}...")
+
+    print()
+    print("-" * 60)
+    print(f"Total: {len(results)} matches in {len(by_file)} sessions")
+
+
+def cmd_list(args: argparse.Namespace) -> None:
     """Execute list command."""
     input_dir = Path(args.input).expanduser()
     output_dir = Path(args.output).expanduser() if args.output else None
@@ -233,7 +318,7 @@ def cmd_list(args):
         print("All files are backed up.")
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         prog="claude-sessions",
@@ -246,9 +331,17 @@ Examples:
   claude-sessions --list                    # List projects and backup status
   claude-sessions --output ~/backup         # Specify output directory
   claude-sessions --format markdown,html    # Only generate specific formats
+  claude-sessions --search -q "python"      # Search for "python"
+  claude-sessions --search --mode regex -q "import\\s+\\w+"  # Regex search
 
 Environment Variables:
   OUTPUT_DIR    Default output directory for backups
+
+Search Modes:
+  smart     Combines exact matching, token overlap, and proximity (default)
+  exact     Exact string matching
+  regex     Regular expression pattern matching
+  semantic  NLP-based semantic search (requires spacy)
 
 Output Structure:
   <output>/
@@ -276,6 +369,11 @@ Output Structure:
         action="store_true",
         help="List projects and backup status"
     )
+    mode_group.add_argument(
+        "--search",
+        action="store_true",
+        help="Search conversations"
+    )
 
     # Path arguments
     parser.add_argument(
@@ -298,11 +396,44 @@ Output Structure:
         help=f"Output formats, comma-separated (default: {DEFAULT_FORMATS})"
     )
 
+    # Search arguments
+    parser.add_argument(
+        "--query", "-q",
+        type=str,
+        help="Search query (for --search mode)"
+    )
+    parser.add_argument(
+        "--mode", "-m",
+        type=str,
+        choices=["smart", "exact", "regex", "semantic"],
+        default="smart",
+        help="Search mode (default: smart)"
+    )
+    parser.add_argument(
+        "--speaker",
+        type=str,
+        choices=["human", "assistant"],
+        help="Filter by speaker"
+    )
+    parser.add_argument(
+        "--max-results",
+        type=int,
+        default=20,
+        help="Maximum search results (default: 20)"
+    )
+    parser.add_argument(
+        "--case-sensitive",
+        action="store_true",
+        help="Case-sensitive search"
+    )
+
     args = parser.parse_args()
 
     # Execute appropriate command
     if args.list:
         cmd_list(args)
+    elif args.search:
+        cmd_search(args)
     else:
         cmd_backup(args)
 

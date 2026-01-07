@@ -15,9 +15,14 @@ Adapted from CAKE's conversation parser for Claude conversation search.
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
+
+try:
+    from utils import extract_text, parse_timestamp
+except ImportError:
+    from .utils import extract_text, parse_timestamp
 
 # Optional NLP imports for semantic search
 try:
@@ -26,37 +31,45 @@ try:
     SPACY_AVAILABLE = True
 except ImportError:
     SPACY_AVAILABLE = False
-    print("Note: Install spacy for enhanced semantic search capabilities")
-    print("      pip install spacy && python -m spacy download en_core_web_sm")
 
 
-# Constants
-MAJOR_SEPARATOR_WIDTH = 60
-DEFAULT_MAX_RESULTS = 20
-MAX_CONTENT_LENGTH = 200
-DEFAULT_CONTEXT_SIZE  = 150
-DEFAULT_MAX_TOPICS = 5
-CONTENT_LENGTH_PROCESSING = 10
-MAX_NOUN_PHRASES_LENGTH = 3
-INDENT_NUMBER = 2
-MIN_TOPIC_PHRASE_COUNT = 1
+@dataclass(frozen=True)
+class SearchConfig:
+    """Configuration constants for search operations."""
 
-# Other constants for relevance or similarity
-RELEVANCE_THRESHOLD = 0.1
-MIN_RELEVANCE_COMPARED = 1.0
-MATCH_FACTOR_FOR_RELEVANCE = 0.2
-MATCH_BONUS = 0.5
-MIN_RELEVANCE_MULTIPLE_OCCURRENCES = 0.3
-MATCH_FACTOR_MULTIPLE_OCCURRENCES = 0.1
-MIN_RELEVANCE_OVERLAP = 0.4
-MATCH_FACTOR_OVERLAP = 0.4
-PROXIMITY_BONUS = 0.1
-MIN_TOKENS_FOR_PROXIMITY_BONUS = 1
-PROXIMITY_WINDOW_MULTIPLIER = 2
-ADDITIONAL_BOOST_EXACT_MATCH = 0.3
-MATCH_CONTEXT_STEP = 100
-SEMANTIC_SIMILARITY_THRESHOLD = 0.3
-CONTEXT_FALLBACK_MULTIPLIER = 2
+    # Display settings
+    major_separator_width: int = 60
+    default_max_results: int = 20
+    max_content_length: int = 200
+    default_context_size: int = 150
+    indent_number: int = 2
+
+    # Topic extraction settings
+    default_max_topics: int = 5
+    content_length_processing: int = 10
+    max_noun_phrases_length: int = 3
+    min_topic_phrase_count: int = 1
+
+    # Relevance scoring thresholds
+    relevance_threshold: float = 0.1
+    min_relevance_compared: float = 1.0
+    match_factor_for_relevance: float = 0.2
+    match_bonus: float = 0.5
+    min_relevance_multiple_occurrences: float = 0.3
+    match_factor_multiple_occurrences: float = 0.1
+    min_relevance_overlap: float = 0.4
+    match_factor_overlap: float = 0.4
+    proximity_bonus: float = 0.1
+    min_tokens_for_proximity_bonus: int = 1
+    proximity_window_multiplier: int = 2
+    additional_boost_exact_match: float = 0.3
+    match_context_step: int = 100
+    semantic_similarity_threshold: float = 0.3
+    context_fallback_multiplier: int = 2
+
+
+# Default configuration instance
+CONFIG = SearchConfig()
 
 
 @dataclass
@@ -74,12 +87,13 @@ class SearchResult:
 
     def __str__(self) -> str:
         """User-friendly string representation"""
+        sep = "=" * CONFIG.major_separator_width
         return (
-            f"\n{'=' * MAJOR_SEPARATOR_WIDTH}\n"
+            f"\n{sep}\n"
             f"File: {self.file_path.name}\n"
             f"Speaker: {self.speaker.title()}\n"
             f"Relevance: {self.relevance_score:.0%}\n"
-            f"{'=' * MAJOR_SEPARATOR_WIDTH}\n"
+            f"{sep}\n"
             f"{self.context}\n"
         )
 
@@ -162,7 +176,7 @@ class ConversationSearcher:
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         speaker_filter: Optional[str] = None,
-        max_results: int = DEFAULT_MAX_RESULTS,
+        max_results: int = CONFIG.default_max_results,
         case_sensitive: bool = False,
     ) -> List[SearchResult]:
         """
@@ -301,27 +315,19 @@ class ConversationSearcher:
                                 content, query, query_tokens, case_sensitive
                             )
 
-                            if relevance > RELEVANCE_THRESHOLD:  # Threshold for inclusion
+                            if relevance > CONFIG.relevance_threshold:
                                 # Extract context
                                 context = self._extract_context(
                                     content, query, case_sensitive
                                 )
 
                                 # Parse timestamp if present
-                                timestamp = None
-                                timestamp_str = entry.get("timestamp")
-                                if timestamp_str:
-                                    try:
-                                        timestamp = datetime.fromisoformat(
-                                            timestamp_str.replace("Z", "+00:00")
-                                        )
-                                    except ValueError:
-                                        pass
+                                timestamp = parse_timestamp(entry.get("timestamp"))
 
                                 result = SearchResult(
                                     file_path=jsonl_file,
                                     conversation_id=conversation_id,
-                                    matched_content=content[:MAX_CONTENT_LENGTH],
+                                    matched_content=content[:CONFIG.max_content_length],
                                     context=context,
                                     speaker=speaker,
                                     timestamp=timestamp,
@@ -378,27 +384,22 @@ class ConversationSearcher:
                             if search_query in search_content:
                                 # Calculate relevance based on match frequency
                                 match_count = search_content.count(search_query)
-                                relevance = min(MIN_RELEVANCE_COMPARED, match_count * MATCH_FACTOR_FOR_RELEVANCE)
+                                relevance = min(
+                                    CONFIG.min_relevance_compared,
+                                    match_count * CONFIG.match_factor_for_relevance
+                                )
 
                                 context = self._extract_context(
                                     content, query, case_sensitive
                                 )
 
                                 # Parse timestamp if present
-                                timestamp = None
-                                timestamp_str = entry.get("timestamp")
-                                if timestamp_str:
-                                    try:
-                                        timestamp = datetime.fromisoformat(
-                                            timestamp_str.replace("Z", "+00:00")
-                                        )
-                                    except ValueError:
-                                        pass
+                                timestamp = parse_timestamp(entry.get("timestamp"))
 
                                 result = SearchResult(
                                     file_path=jsonl_file,
                                     conversation_id=conversation_id,
-                                    matched_content=content[:MAX_CONTENT_LENGTH],
+                                    matched_content=content[:CONFIG.max_content_length],
                                     context=context,
                                     speaker=speaker,
                                     timestamp=timestamp,
@@ -458,24 +459,19 @@ class ConversationSearcher:
 
                             if matches:
                                 # Calculate relevance based on match quality
-                                relevance = min(MIN_RELEVANCE_COMPARED, len(matches) * MATCH_FACTOR_FOR_RELEVANCE)
+                                relevance = min(
+                                    CONFIG.min_relevance_compared,
+                                    len(matches) * CONFIG.match_factor_for_relevance
+                                )
 
                                 # Get context around first match
                                 first_match = matches[0]
-                                start = max(0, first_match.start() - MATCH_CONTEXT_STEP)
-                                end = min(len(content), first_match.end() + MATCH_CONTEXT_STEP)
+                                start = max(0, first_match.start() - CONFIG.match_context_step)
+                                end = min(len(content), first_match.end() + CONFIG.match_context_step)
                                 context = "..." + content[start:end] + "..."
 
                                 # Parse timestamp if present
-                                timestamp = None
-                                timestamp_str = entry.get("timestamp")
-                                if timestamp_str:
-                                    try:
-                                        timestamp = datetime.fromisoformat(
-                                            timestamp_str.replace("Z", "+00:00")
-                                        )
-                                    except ValueError:
-                                        pass
+                                timestamp = parse_timestamp(entry.get("timestamp"))
 
                                 result = SearchResult(
                                     file_path=jsonl_file,
@@ -545,24 +541,16 @@ class ConversationSearcher:
                                 query_doc, query_tokens, content_doc
                             )
 
-                            if similarity > SEMANTIC_SIMILARITY_THRESHOLD:  # Threshold for semantic matches
+                            if similarity > CONFIG.semantic_similarity_threshold:
                                 context = self._extract_context(content, query, False)
 
                                 # Parse timestamp if present
-                                timestamp = None
-                                timestamp_str = entry.get("timestamp")
-                                if timestamp_str:
-                                    try:
-                                        timestamp = datetime.fromisoformat(
-                                            timestamp_str.replace("Z", "+00:00")
-                                        )
-                                    except ValueError:
-                                        pass
+                                timestamp = parse_timestamp(entry.get("timestamp"))
 
                                 result = SearchResult(
                                     file_path=jsonl_file,
                                     conversation_id=conversation_id,
-                                    matched_content=content[:MAX_CONTENT_LENGTH],
+                                    matched_content=content[:CONFIG.max_content_length],
                                     context=context,
                                     speaker=speaker,
                                     timestamp=timestamp,
@@ -579,32 +567,23 @@ class ConversationSearcher:
 
         return results
 
-    def _extract_content(self, entry: Dict) -> str:
+    def _extract_content(self, entry: Dict[str, Any]) -> str:
         """Extract text content from a JSONL entry."""
         # Handle test format (type: user/assistant, content: string)
         if entry.get("type") in ["user", "assistant"] and "content" in entry:
             content = entry["content"]
             if isinstance(content, str):
                 return content
+            # Use shared extract_text for list content
+            return extract_text(content)
 
         # Handle actual Claude log format (type: user/assistant, message: {...})
         if "message" in entry:
             msg = entry["message"]
             if isinstance(msg, dict):
                 content = msg.get("content", "")
-
-                # Handle different content formats
-                if isinstance(content, list):
-                    # Extract text from content array
-                    text_parts = []
-                    for item in content:
-                        if isinstance(item, dict) and item.get("type") == "text":
-                            text_parts.append(item.get("text", ""))
-                        elif isinstance(item, str):
-                            text_parts.append(item)
-                    return " ".join(text_parts)
-                elif isinstance(content, str):
-                    return content
+                # Use shared extract_text utility
+                return extract_text(content)
 
         return ""
 
@@ -632,31 +611,37 @@ class ConversationSearcher:
 
         # Exact match bonus
         if query_lower in content_lower:
-            relevance += MATCH_BONUS
+            relevance += CONFIG.match_bonus
             # Additional bonus for multiple occurrences
             count = content_lower.count(query_lower)
-            relevance += min(MIN_RELEVANCE_MULTIPLE_OCCURRENCES, count * MATCH_FACTOR_MULTIPLE_OCCURRENCES)
+            relevance += min(
+                CONFIG.min_relevance_multiple_occurrences,
+                count * CONFIG.match_factor_multiple_occurrences
+            )
 
         # Token overlap
         content_tokens = set(content_lower.split()) - self.stop_words
         if query_tokens and content_tokens:
             overlap = len(query_tokens & content_tokens)
-            relevance += min(MIN_RELEVANCE_OVERLAP, overlap / len(query_tokens) * MATCH_FACTOR_OVERLAP)
+            relevance += min(
+                CONFIG.min_relevance_overlap,
+                overlap / len(query_tokens) * CONFIG.match_factor_overlap
+            )
 
         # Proximity bonus - are query terms near each other?
-        if len(query_tokens) > MIN_TOKENS_FOR_PROXIMITY_BONUS:
+        if len(query_tokens) > CONFIG.min_tokens_for_proximity_bonus:
             # Check if all query tokens appear within a window
             words = content_lower.split()
             for i in range(len(words) - len(query_tokens)):
-                window = set(words[i : i + len(query_tokens) * PROXIMITY_WINDOW_MULTIPLIER])
+                window = set(words[i : i + len(query_tokens) * CONFIG.proximity_window_multiplier])
                 if query_tokens.issubset(window):
-                    relevance += PROXIMITY_BONUS
+                    relevance += CONFIG.proximity_bonus
                     break
 
-        return min(MIN_RELEVANCE_COMPARED, relevance)
+        return min(CONFIG.min_relevance_compared, relevance)
 
     def _calculate_semantic_similarity(
-        self, query_doc, query_tokens, content_doc
+        self, query_doc: Any, query_tokens: List[Any], content_doc: Any
     ) -> float:
         """Calculate semantic similarity using spaCy."""
         if not query_tokens:
@@ -683,12 +668,16 @@ class ConversationSearcher:
 
         # Boost for exact phrase matches
         if query_doc.text.lower() in content_doc.text.lower():
-            base_similarity = min(MIN_RELEVANCE_COMPARED, base_similarity + ADDITIONAL_BOOST_EXACT_MATCH)
+            base_similarity = min(
+                CONFIG.min_relevance_compared,
+                base_similarity + CONFIG.additional_boost_exact_match
+            )
 
         return base_similarity
 
     def _extract_context(
-        self, content: str, query: str, case_sensitive: bool, context_size: int = DEFAULT_CONTEXT_SIZE
+        self, content: str, query: str, case_sensitive: bool,
+        context_size: int = CONFIG.default_context_size
     ) -> str:
         """Extract context around the match for display."""
         if not case_sensitive:
@@ -697,11 +686,10 @@ class ConversationSearcher:
         else:
             pos = content.find(query)
 
+        fallback_size = context_size * CONFIG.context_fallback_multiplier
         if pos == -1:
             # No exact match, return beginning of content
-            return content[: context_size * CONTEXT_FALLBACK_MULTIPLIER] + (
-                "..." if len(content) > context_size * CONTEXT_FALLBACK_MULTIPLIER else ""
-            )
+            return content[:fallback_size] + ("..." if len(content) > fallback_size else "")
 
         # Extract context around match
         start = max(0, pos - context_size)
@@ -736,7 +724,7 @@ class ConversationSearcher:
         return self._filter_files_by_date(jsonl_files, date_from, date_to)
 
     def get_conversation_topics(
-        self, jsonl_file: Path, max_topics: int = DEFAULT_MAX_TOPICS
+        self, jsonl_file: Path, max_topics: int = CONFIG.default_max_topics
     ) -> List[str]:
         """
         Extract main topics from a conversation.
@@ -765,17 +753,17 @@ class ConversationSearcher:
             return []
 
         # Process with spaCy
-        full_text = " ".join(all_content[:CONTENT_LENGTH_PROCESSING])  # Limit to avoid processing too much
+        full_text = " ".join(all_content[:CONFIG.content_length_processing])
         doc = self.nlp(full_text)
 
         # Extract noun phrases as topics
         noun_phrases = []
         for chunk in doc.noun_chunks:
-            if len(chunk.text.split()) <= MAX_NOUN_PHRASES_LENGTH:  # Reasonable length
+            if len(chunk.text.split()) <= CONFIG.max_noun_phrases_length:
                 noun_phrases.append(chunk.text.lower())
 
         # Count frequency
-        phrase_counts = {}
+        phrase_counts: Dict[str, int] = {}
         for phrase in noun_phrases:
             phrase_counts[phrase] = phrase_counts.get(phrase, 0) + 1
 
@@ -783,7 +771,10 @@ class ConversationSearcher:
         sorted_phrases = sorted(phrase_counts.items(), key=lambda x: x[1], reverse=True)
 
         # Return top topics
-        return [phrase for phrase, count in sorted_phrases[:max_topics] if count > MIN_TOPIC_PHRASE_COUNT]
+        return [
+            phrase for phrase, count in sorted_phrases[:max_topics]
+            if count > CONFIG.min_topic_phrase_count
+        ]
 
 
 def create_search_index(search_dir: Path, output_file: Path) -> None:
@@ -839,30 +830,6 @@ def create_search_index(search_dir: Path, output_file: Path) -> None:
 
     # Save index
     with open(output_file, "w") as f:
-        json.dump(index, f, indent=INDENT_NUMBER)
+        json.dump(index, f, indent=CONFIG.indent_number)
 
     print(f"Created search index with {len(index['conversations'])} conversations")
-
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Test the search functionality
-    searcher = ConversationSearcher()
-
-    # Example searches
-    print("Testing search functionality...")
-
-    # Smart search
-    results = searcher.search("python error", mode="smart", max_results=5)
-    print(f"\nFound {len(results)} results for 'python error'")
-    for result in results[:2]:
-        print(result)
-
-    # Regex search
-    results = searcher.search(r"import\s+\w+", mode="regex", max_results=5)
-    print(f"\nFound {len(results)} results for regex 'import\\s+\\w+'")
-
-    # Date range search
-    week_ago = datetime.now() - timedelta(days=7)
-    results = searcher.search("", date_from=week_ago, max_results=5)
-    print(f"\nFound {len(results)} conversations from the last week")

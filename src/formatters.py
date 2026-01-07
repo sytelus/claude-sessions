@@ -7,14 +7,15 @@ Converts JSONL session files to markdown, HTML, and structured data formats.
 
 import html
 import json
-from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 try:
     from parser import SessionParser
+    from utils import iter_project_dirs, parse_timestamp
 except ImportError:
     from .parser import SessionParser
+    from .utils import iter_project_dirs, parse_timestamp
 
 
 # Constants
@@ -27,7 +28,7 @@ class FormatConverter:
     def __init__(self):
         self.parser = SessionParser()
 
-    def convert_all(self, output_dir: Path, formats: List[str]) -> Dict:
+    def convert_all(self, output_dir: Path, formats: List[str]) -> Dict[str, int]:
         """
         Convert all JSONL files in output directory to specified formats.
 
@@ -43,14 +44,7 @@ class FormatConverter:
         result = {fmt: 0 for fmt in formats}
         result["skipped"] = 0
 
-        for project_dir in output_dir.iterdir():
-            if not project_dir.is_dir():
-                continue
-
-            # Skip stats files and format subdirectories
-            if project_dir.name in ["markdown", "html", "data"]:
-                continue
-
+        for project_dir in iter_project_dirs(output_dir):
             # Create format subdirectories
             for fmt in formats:
                 (project_dir / fmt).mkdir(exist_ok=True)
@@ -115,7 +109,7 @@ class FormatConverter:
 
         return False
 
-    def _write_markdown(self, messages: List[Dict], output_path: Path, session_id: str):
+    def _write_markdown(self, messages: List[Dict[str, Any]], output_path: Path, session_id: str) -> None:
         """Write messages as markdown file."""
         with open(output_path, "w", encoding="utf-8") as f:
             # Header
@@ -124,13 +118,9 @@ class FormatConverter:
 
             # Get timestamp from first message
             if messages and messages[0].get("timestamp"):
-                try:
-                    dt = datetime.fromisoformat(
-                        messages[0]["timestamp"].replace("Z", "+00:00")
-                    )
+                dt = parse_timestamp(messages[0]["timestamp"])
+                if dt:
                     f.write(f"**Date:** {dt.strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
-                except Exception:
-                    pass
 
             f.write("---\n\n")
 
@@ -184,18 +174,14 @@ class FormatConverter:
 
                 f.write("---\n\n")
 
-    def _write_html(self, messages: List[Dict], output_path: Path, session_id: str):
+    def _write_html(self, messages: List[Dict[str, Any]], output_path: Path, session_id: str) -> None:
         """Write messages as HTML file."""
         # Get metadata
         timestamp_str = ""
         if messages and messages[0].get("timestamp"):
-            try:
-                dt = datetime.fromisoformat(
-                    messages[0]["timestamp"].replace("Z", "+00:00")
-                )
+            dt = parse_timestamp(messages[0]["timestamp"])
+            if dt:
                 timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-            except Exception:
-                pass
 
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -337,7 +323,7 @@ class FormatConverter:
 
             f.write("\n</body>\n</html>")
 
-    def _write_data(self, messages: List[Dict], output_path: Path, session_id: str, source_file: Path):
+    def _write_data(self, messages: List[Dict[str, Any]], output_path: Path, session_id: str, source_file: Path) -> None:
         """Write messages as structured JSON data file."""
         # Get session metadata from first message
         metadata = {}
@@ -349,23 +335,15 @@ class FormatConverter:
             }
 
             if first.get("timestamp"):
-                try:
-                    dt = datetime.fromisoformat(
-                        first["timestamp"].replace("Z", "+00:00")
-                    )
+                dt = parse_timestamp(first["timestamp"])
+                if dt:
                     metadata["start_time"] = dt.isoformat()
-                except Exception:
-                    pass
 
         # Get end time from last message
         if messages and messages[-1].get("timestamp"):
-            try:
-                dt = datetime.fromisoformat(
-                    messages[-1]["timestamp"].replace("Z", "+00:00")
-                )
+            dt = parse_timestamp(messages[-1]["timestamp"])
+            if dt:
                 metadata["end_time"] = dt.isoformat()
-            except Exception:
-                pass
 
         # Calculate statistics
         user_messages = [m for m in messages if m.get("type") == "user"]

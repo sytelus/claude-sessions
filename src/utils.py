@@ -6,10 +6,15 @@ Common functions used across multiple modules.
 """
 
 from datetime import datetime
-from typing import Optional
+from pathlib import Path
+from typing import Any, Generator, List, Optional, Union
 
 
-def extract_text(content) -> str:
+# Directories to skip when iterating over project folders
+SKIP_DIRS = {"markdown", "html", "data"}
+
+
+def extract_text(content: Union[str, List[Any], Any]) -> str:
     """
     Extract text from various content formats.
 
@@ -55,3 +60,26 @@ def parse_timestamp(timestamp_str: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
     except Exception:
         return None
+
+
+def iter_project_dirs(output_dir: Path) -> Generator[Path, None, None]:
+    """
+    Iterate over project directories in output folder.
+
+    Skips format subdirectories (markdown, html, data) and non-directories.
+
+    Args:
+        output_dir: Output directory containing project folders
+
+    Yields:
+        Path objects for each project directory
+    """
+    if not output_dir.exists():
+        return
+
+    for project_dir in output_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+        if project_dir.name in SKIP_DIRS:
+            continue
+        yield project_dir

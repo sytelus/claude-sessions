@@ -9,10 +9,7 @@ from .stats import StatisticsGenerator
 from .prompts import PromptsExtractor
 from .parser import SessionParser, ParsedMessage
 from .utils import extract_text, parse_timestamp
-
-# Legacy exports for backwards compatibility
-from .extract_claude_logs import ClaudeConversationExtractor
-from .search_conversations import ConversationSearcher
+from .search_conversations import ConversationSearcher, SearchResult
 
 __all__ = [
     "BackupManager",
@@ -23,6 +20,6 @@ __all__ = [
     "ParsedMessage",
     "extract_text",
     "parse_timestamp",
-    "ClaudeConversationExtractor",
     "ConversationSearcher",
+    "SearchResult",
 ]

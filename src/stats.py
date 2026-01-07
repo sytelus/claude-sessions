@@ -12,12 +12,14 @@ import statistics
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 try:
     from parser import SessionParser, ParsedMessage
+    from utils import iter_project_dirs
 except ImportError:
     from .parser import SessionParser, ParsedMessage
+    from .utils import iter_project_dirs
 
 
 class StatisticsGenerator:
@@ -39,7 +41,7 @@ class StatisticsGenerator:
     def __init__(self):
         self.parser = SessionParser()
 
-    def generate(self, output_dir: Path) -> Dict:
+    def generate(self, output_dir: Path) -> Dict[str, Any]:
         """
         Generate statistics for all backed up sessions.
 
@@ -70,12 +72,7 @@ class StatisticsGenerator:
         }
 
         # Process each project
-        for project_dir in output_dir.iterdir():
-            if not project_dir.is_dir():
-                continue
-            if project_dir.name in ["markdown", "html", "data"]:
-                continue
-
+        for project_dir in iter_project_dirs(output_dir):
             project_stats = self._compute_project_stats(project_dir)
             if project_stats:
                 all_projects.append(project_stats)
@@ -158,7 +155,7 @@ class StatisticsGenerator:
             "projects": all_projects,
         }
 
-    def _compute_project_stats(self, project_dir: Path) -> Optional[Dict]:
+    def _compute_project_stats(self, project_dir: Path) -> Optional[Dict[str, Any]]:
         """Compute statistics for a single project."""
         jsonl_files = list(project_dir.glob("*.jsonl"))
         if not jsonl_files:
@@ -256,7 +253,7 @@ class StatisticsGenerator:
 
         return stats
 
-    def _analyze_session(self, jsonl_file: Path) -> Optional[Dict]:
+    def _analyze_session(self, jsonl_file: Path) -> Optional[Dict[str, Any]]:
         """Analyze a single session file using the shared parser."""
         messages = self.parser.parse_file(jsonl_file)
         if not messages:
@@ -343,12 +340,12 @@ class StatisticsGenerator:
             count += len(re.findall(pattern, text_lower))
         return count
 
-    def save_json(self, stats: Dict, output_path: Path):
+    def save_json(self, stats: Dict[str, Any], output_path: Path) -> None:
         """Save statistics as JSON."""
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(stats, f, indent=2, ensure_ascii=False)
 
-    def save_html(self, stats: Dict, output_path: Path):
+    def save_html(self, stats: Dict[str, Any], output_path: Path) -> None:
         """Save statistics as HTML dashboard."""
         agg = stats["aggregate"]
         projects = stats["projects"]

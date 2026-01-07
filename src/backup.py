@@ -8,7 +8,7 @@ Provides incremental backup with timestamp preservation.
 import os
 import shutil
 from pathlib import Path
-from typing import Dict
+from typing import Any, Dict
 
 
 class BackupManager:
@@ -25,7 +25,7 @@ class BackupManager:
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
 
-    def backup(self) -> Dict:
+    def backup(self) -> Dict[str, Any]:
         """
         Perform incremental backup.
 
@@ -124,7 +124,7 @@ class BackupManager:
         except Exception as e:
             return f"error: {e}"
 
-    def _preserve_timestamp(self, source: Path, dest: Path):
+    def _preserve_timestamp(self, source: Path, dest: Path) -> None:
         """Preserve original file timestamps."""
         try:
             source_stat = source.stat()
@@ -132,7 +132,7 @@ class BackupManager:
         except Exception:
             pass  # Best effort timestamp preservation
 
-    def get_sync_status(self) -> Dict:
+    def get_sync_status(self) -> Dict[str, Any]:
         """
         Get current sync status without making changes.
 
