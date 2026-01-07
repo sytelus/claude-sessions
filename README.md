@@ -73,8 +73,10 @@ PROJECT                                            INPUT   BACKUP     STATUS
 
 ## Output Structure
 
+All outputs are created in a `claude-sessions` subfolder under your specified output directory:
+
 ```
-<output>/
+<output>/claude-sessions/
 ├── stats.html              # Statistics dashboard
 ├── stats.json              # Statistics data (machine-readable)
 ├── <project>/

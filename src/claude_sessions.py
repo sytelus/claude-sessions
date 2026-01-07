@@ -2,7 +2,57 @@
 """
 Claude Sessions - Backup and analyze Claude Code conversation sessions.
 
-This is the main entry point for the claude-sessions CLI tool.
+This is the main entry point for the claude-sessions CLI tool. It provides
+commands for backing up, converting, and searching Claude Code session logs.
+
+Commands:
+    --backup (default): Perform incremental backup with format conversion
+    --list: Show projects and their backup status
+    --search: Search conversation content across sessions
+
+Backup Pipeline:
+    1. Incremental backup: Copy new/modified JSONL files to output directory
+    2. Format conversion: Generate Markdown, HTML, and JSON formats
+    3. Statistics generation: Compute usage statistics and HTML dashboard
+    4. Prompt extraction: Extract user prompts to YAML files
+
+Configuration:
+    - Input directory: Default ~/.claude/projects (where Claude Code stores logs)
+    - Output directory: Via --output flag or OUTPUT_DIR environment variable
+    - Formats: Customizable via --format flag (markdown,html,data)
+
+For architecture details and data flows, see:
+    docs/ARCHITECTURE.md
+
+For JSONL format specification, see:
+    docs/JSONL_FORMAT.md
+
+Usage Examples:
+    # Run default backup
+    claude-sessions --output ~/claude-backups
+
+    # List projects without backing up
+    claude-sessions --list
+
+    # Search for specific terms
+    claude-sessions --search -q "authentication" --mode smart
+
+    # Generate only markdown format
+    claude-sessions --format markdown --output ~/backups
+
+Functions:
+    main(): CLI entry point
+    cmd_backup(): Execute backup pipeline
+    cmd_search(): Execute search command
+    cmd_list(): Show project list and status
+    get_output_dir(): Resolve output directory from args/env/prompt
+    parse_formats(): Parse format string into list
+
+Module Constants:
+    DEFAULT_INPUT_DIR: Default Claude Code projects directory
+    DEFAULT_FORMATS: Default output formats (markdown,html,data)
+    ENV_OUTPUT_DIR: Environment variable name for output directory
+    OUTPUT_SUBFOLDER: Subfolder name for all outputs ("claude-sessions")
 """
 
 import argparse
@@ -11,28 +61,38 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-try:
-    from backup import BackupManager
-    from formatters import FormatConverter
-    from stats import StatisticsGenerator
-    from prompts import PromptsExtractor
-    from search_conversations import ConversationSearcher
-except ImportError:
-    from .backup import BackupManager
-    from .formatters import FormatConverter
-    from .stats import StatisticsGenerator
-    from .prompts import PromptsExtractor
-    from .search_conversations import ConversationSearcher
+from .backup import BackupManager
+from .formatters import FormatConverter
+from .stats import StatisticsGenerator
+from .prompts import PromptsExtractor
+from .search_conversations import ConversationSearcher
 
 
 # Constants
 DEFAULT_INPUT_DIR = Path.home() / ".claude" / "projects"
 DEFAULT_FORMATS = "markdown,html,data"
 ENV_OUTPUT_DIR = "OUTPUT_DIR"
+OUTPUT_SUBFOLDER = "claude-sessions"
 
 
 def get_output_dir(args_output: Optional[str]) -> Path:
-    """Get output directory from args, env var, or prompt user."""
+    """
+    Get output directory from args, env var, or prompt user.
+
+    Resolution priority:
+        1. Command line --output argument
+        2. OUTPUT_DIR environment variable
+        3. Interactive user prompt
+
+    Args:
+        args_output: Output path from command line arguments (may be None)
+
+    Returns:
+        Path object for the resolved output directory
+
+    Raises:
+        SystemExit: If user cancels prompt or no directory provided
+    """
     # Priority 1: Command line argument
     if args_output:
         return Path(args_output).expanduser()
@@ -62,7 +122,18 @@ def get_output_dir(args_output: Optional[str]) -> Path:
 
 
 def parse_formats(format_str: str) -> List[str]:
-    """Parse comma-separated format string into list."""
+    """
+    Parse comma-separated format string into list of valid formats.
+
+    Valid formats are: markdown, html, data
+
+    Args:
+        format_str: Comma-separated format names (e.g., "markdown,html")
+
+    Returns:
+        List of valid format names. Invalid formats are logged and skipped.
+        Returns all valid formats if input has no valid formats.
+    """
     valid_formats = {"markdown", "html", "data"}
     formats = [f.strip().lower() for f in format_str.split(",")]
 
@@ -75,9 +146,29 @@ def parse_formats(format_str: str) -> List[str]:
 
 
 def cmd_backup(args: argparse.Namespace) -> None:
-    """Execute backup command."""
+    """
+    Execute the backup command.
+
+    Runs the full backup pipeline:
+        1. Incremental file backup (BackupManager)
+        2. Format conversion (FormatConverter)
+        3. Statistics generation (StatisticsGenerator)
+        4. Prompt extraction (PromptsExtractor)
+
+    Progress is printed to stdout throughout the process.
+
+    Args:
+        args: Parsed command line arguments containing:
+            - input: Input directory path
+            - output: Output directory path (may be None)
+            - format: Format string (e.g., "markdown,html,data")
+
+    Raises:
+        SystemExit: If input directory doesn't exist
+    """
     input_dir = Path(args.input).expanduser()
-    output_dir = get_output_dir(args.output)
+    base_output_dir = get_output_dir(args.output)
+    output_dir = base_output_dir / OUTPUT_SUBFOLDER
     formats = parse_formats(args.format)
 
     print("=" * 60)
@@ -94,7 +185,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
         print(f"Error: Input directory does not exist: {input_dir}")
         sys.exit(1)
 
-    # Create output directory if needed
+    # Create output directory if needed (including claude-sessions subfolder)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize components
@@ -152,7 +243,26 @@ def cmd_backup(args: argparse.Namespace) -> None:
 
 
 def cmd_search(args: argparse.Namespace) -> None:
-    """Execute search command."""
+    """
+    Execute the search command.
+
+    Searches through Claude Code session logs for matching content.
+    Results are grouped by session file and displayed with relevance scores.
+
+    If no query is provided via --query/-q, prompts the user interactively.
+
+    Args:
+        args: Parsed command line arguments containing:
+            - input: Directory to search
+            - query: Search query string (may be None for interactive)
+            - mode: Search mode (smart, exact, regex, semantic)
+            - speaker: Optional speaker filter (human/assistant)
+            - max_results: Maximum number of results to return
+            - case_sensitive: Whether search is case-sensitive
+
+    Raises:
+        SystemExit: If input directory doesn't exist or user cancels
+    """
     input_dir = Path(args.input).expanduser()
 
     print("=" * 60)
@@ -235,14 +345,36 @@ def cmd_search(args: argparse.Namespace) -> None:
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-    """Execute list command."""
-    input_dir = Path(args.input).expanduser()
-    output_dir = Path(args.output).expanduser() if args.output else None
+    """
+    Execute the list command.
 
-    if not output_dir:
+    Displays a table showing all projects in the input directory and their
+    backup status. Compares file counts between input and output directories
+    to determine status.
+
+    Status values:
+        - OK: All files backed up
+        - PENDING: Some files not yet backed up
+        - ARCHIVED: Files exist only in backup (removed from source)
+
+    Args:
+        args: Parsed command line arguments containing:
+            - input: Input directory path
+            - output: Output directory path (may be None, falls back to env var)
+
+    Raises:
+        SystemExit: If input directory doesn't exist
+    """
+    input_dir = Path(args.input).expanduser()
+    base_output_dir = Path(args.output).expanduser() if args.output else None
+
+    if not base_output_dir:
         env_output = os.environ.get(ENV_OUTPUT_DIR)
         if env_output:
-            output_dir = Path(env_output).expanduser()
+            base_output_dir = Path(env_output).expanduser()
+
+    # Append claude-sessions subfolder if base output dir is set
+    output_dir = base_output_dir / OUTPUT_SUBFOLDER if base_output_dir else None
 
     print("=" * 60)
     print("CLAUDE SESSIONS - PROJECT LIST")
@@ -319,7 +451,20 @@ def cmd_list(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    """Main entry point."""
+    """
+    Main entry point for the claude-sessions CLI.
+
+    Parses command line arguments and dispatches to the appropriate command
+    handler (cmd_backup, cmd_search, or cmd_list).
+
+    Commands are mutually exclusive:
+        --backup (default): Run the full backup pipeline
+        --search: Search conversation content
+        --list: Show project list and backup status
+
+    The argument parser is configured with detailed help text and examples
+    in the epilog.
+    """
     parser = argparse.ArgumentParser(
         prog="claude-sessions",
         description="Backup and analyze Claude Code conversation sessions",
@@ -344,7 +489,7 @@ Search Modes:
   semantic  NLP-based semantic search (requires spacy)
 
 Output Structure:
-  <output>/
+  <output>/claude-sessions/
   ├── stats.html              # Statistics dashboard
   ├── stats.json              # Statistics data
   └── <project>/

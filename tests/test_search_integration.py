@@ -9,14 +9,14 @@ import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Add parent directories to path before local imports
-sys.path.append(str(Path(__file__).parent.parent))
-sys.path.append(str(Path(__file__).parent))
+# Add project root and tests directory to path for package imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
 # Local imports after sys.path modification
 from fixtures.sample_conversations import (ConversationFixtures,  # noqa: E402
                                            cleanup_test_environment)
-from search_conversations import ConversationSearcher  # noqa: E402
+from src.search_conversations import ConversationSearcher  # noqa: E402
 
 
 class TestSearchIntegration(unittest.TestCase):

@@ -2,7 +2,47 @@
 """
 Statistics generation for Claude Sessions.
 
-Computes comprehensive statistics about Claude usage patterns.
+This module computes comprehensive statistics about Claude Code usage patterns
+from session JSONL files. It generates both machine-readable JSON and human-
+readable HTML dashboard outputs.
+
+Statistics Categories:
+    - Message counts: User messages, assistant messages, tool uses
+    - Token usage: Input tokens, output tokens, totals
+    - Timing: Session durations, response times, work hours distribution
+    - Content analysis: Code blocks generated, apology pattern detection
+    - Trends: Daily, weekly, and monthly usage patterns
+    - Models: Which Claude models were used and how often
+
+Output Files:
+    - stats.json: Machine-readable statistics for programmatic access
+    - stats.html: Interactive HTML dashboard with charts and tables
+
+Aggregate vs Per-Project:
+    Statistics are computed at two levels:
+    1. Per-project: Metrics for each individual project directory
+    2. Aggregate: Combined totals and averages across all projects
+
+For architecture overview and data flow, see:
+    docs/ARCHITECTURE.md
+
+For JSONL format details (where statistics are extracted from), see:
+    docs/JSONL_FORMAT.md
+
+Example:
+    >>> from stats import StatisticsGenerator
+    >>> generator = StatisticsGenerator()
+    >>> stats = generator.generate(Path("./output"))
+    >>> print(f"Total sessions: {stats['aggregate']['total_sessions']}")
+    >>> generator.save_json(stats, Path("./output/stats.json"))
+    >>> generator.save_html(stats, Path("./output/stats.html"))
+
+Classes:
+    StatisticsGenerator: Main class for computing and exporting statistics
+
+Class Attributes:
+    APOLOGY_PATTERNS: Regex patterns for detecting apology language
+    CODE_BLOCK_PATTERN: Regex for detecting markdown code blocks
 """
 
 import html
@@ -14,16 +54,64 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-try:
-    from parser import SessionParser, ParsedMessage
-    from utils import iter_project_dirs
-except ImportError:
-    from .parser import SessionParser, ParsedMessage
-    from .utils import iter_project_dirs
+from .parser import SessionParser, ParsedMessage
+from .utils import iter_project_dirs
 
 
 class StatisticsGenerator:
-    """Generates comprehensive statistics from Claude session data."""
+    """
+    Generates comprehensive statistics from Claude session data.
+
+    This class processes all JSONL session files in a backup directory and
+    computes various metrics about Claude Code usage. Statistics are computed
+    both per-project and as aggregate totals.
+
+    The generator uses SessionParser to read session files, ensuring consistent
+    parsing across all modules.
+
+    Statistics Computed:
+        Message Metrics:
+            - Total messages (user + assistant + tool)
+            - User message count
+            - Assistant message count
+            - Tool use count
+
+        Token Metrics:
+            - Input tokens (cumulative across all sessions)
+            - Output tokens (cumulative across all sessions)
+            - Total tokens
+            - Average tokens per session
+
+        Timing Metrics:
+            - Session duration (first to last message)
+            - Response times (user message to assistant response)
+            - Work hours distribution (sessions per hour of day)
+
+        Content Analysis:
+            - Code blocks generated (markdown ``` blocks)
+            - Apology patterns (self-correction language)
+
+        Usage Trends:
+            - Daily usage counts
+            - Weekly usage counts
+            - Monthly usage counts
+
+        Model Usage:
+            - Count of sessions per model version
+
+    Attributes:
+        parser (SessionParser): Parser instance for reading JSONL files
+
+    Example:
+        >>> generator = StatisticsGenerator()
+        >>> stats = generator.generate(Path("./backups"))
+        >>> # Access aggregate statistics
+        >>> print(f"Sessions: {stats['aggregate']['total_sessions']}")
+        >>> print(f"Tokens: {stats['aggregate']['total_tokens']:,}")
+        >>> # Access per-project statistics
+        >>> for project in stats['projects']:
+        ...     print(f"{project['project_name']}: {project['sessions']} sessions")
+    """
 
     # Patterns for detecting communication patterns
     APOLOGY_PATTERNS = [
@@ -38,18 +126,34 @@ class StatisticsGenerator:
     # Patterns for detecting code blocks
     CODE_BLOCK_PATTERN = r"```[\s\S]*?```"
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.parser = SessionParser()
 
     def generate(self, output_dir: Path) -> Dict[str, Any]:
         """
         Generate statistics for all backed up sessions.
 
+        Iterates through all project directories in output_dir, analyzes
+        each session JSONL file, and aggregates the results.
+
         Args:
-            output_dir: Output directory containing project folders
+            output_dir: Root output directory containing project folders.
+                        Each project folder should contain *.jsonl files.
 
         Returns:
-            Dict containing per-project and aggregate statistics
+            dict: Statistics with the following structure:
+                - generated_at (str): ISO timestamp when stats were generated
+                - aggregate (dict): Combined statistics across all projects:
+                    - total_sessions, total_messages, total_tokens, etc.
+                    - work_hours (dict): Hour (0-23) -> session count
+                    - daily_usage (dict): Date string -> session count
+                    - models_used (dict): Model ID -> usage count
+                    - session_duration_stats (dict): min/max/avg/median minutes
+                    - response_time_stats (dict): min/max/avg/median seconds
+                - projects (list): Per-project statistics, each containing:
+                    - project_name, sessions, total_messages, total_tokens
+                    - first_session, last_session (ISO timestamps)
+                    - work_hours, daily_usage, models_used (dicts)
         """
         all_projects = []
         aggregate = {
@@ -156,7 +260,19 @@ class StatisticsGenerator:
         }
 
     def _compute_project_stats(self, project_dir: Path) -> Optional[Dict[str, Any]]:
-        """Compute statistics for a single project."""
+        """
+        Compute statistics for a single project directory.
+
+        Processes all JSONL files in the project directory and aggregates
+        their statistics into a single project-level summary.
+
+        Args:
+            project_dir: Path to project directory containing *.jsonl files
+
+        Returns:
+            dict: Project statistics (see generate() for structure), or
+            None: If no JSONL files found in directory
+        """
         jsonl_files = list(project_dir.glob("*.jsonl"))
         if not jsonl_files:
             return None
@@ -254,7 +370,27 @@ class StatisticsGenerator:
         return stats
 
     def _analyze_session(self, jsonl_file: Path) -> Optional[Dict[str, Any]]:
-        """Analyze a single session file using the shared parser."""
+        """
+        Analyze a single session file using the shared parser.
+
+        Extracts all statistics from a single JSONL session file, including
+        message counts, token usage, timing information, and content analysis.
+
+        Args:
+            jsonl_file: Path to session JSONL file
+
+        Returns:
+            dict: Session statistics with keys:
+                - total_messages, user_messages, assistant_messages, tool_uses
+                - total_tokens, input_tokens, output_tokens
+                - code_blocks, apologies (content analysis counts)
+                - duration_minutes (None if single message)
+                - response_times (list of seconds between user->assistant)
+                - active_hours (list of hours with activity)
+                - start_time, end_time (datetime objects)
+                - models (list of model IDs used)
+            None: If file cannot be parsed or is empty
+        """
         messages = self.parser.parse_file(jsonl_file)
         if not messages:
             return None
@@ -333,7 +469,26 @@ class StatisticsGenerator:
         return stats
 
     def _count_apologies(self, text: str) -> int:
-        """Count apology patterns in text."""
+        """
+        Count apology patterns in text.
+
+        Searches for self-correction language that may indicate Claude
+        made an error and corrected itself. Uses case-insensitive matching.
+
+        Patterns detected:
+            - "I'm sorry" / "I am sorry"
+            - "apologize" / "apologise"
+            - "my mistake"
+            - "I was wrong"
+            - "correction"
+            - "let me fix" / "let me correct"
+
+        Args:
+            text: Text content to analyze (typically assistant message)
+
+        Returns:
+            int: Total count of apology patterns found
+        """
         count = 0
         text_lower = text.lower()
         for pattern in self.APOLOGY_PATTERNS:
@@ -341,12 +496,41 @@ class StatisticsGenerator:
         return count
 
     def save_json(self, stats: Dict[str, Any], output_path: Path) -> None:
-        """Save statistics as JSON."""
+        """
+        Save statistics as JSON file.
+
+        Writes the statistics dictionary to a JSON file with pretty formatting
+        (2-space indentation). The file is encoded as UTF-8 to handle any
+        international characters in project names.
+
+        Args:
+            stats: Statistics dictionary from generate()
+            output_path: Path for output JSON file (typically stats.json)
+        """
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(stats, f, indent=2, ensure_ascii=False)
 
     def save_html(self, stats: Dict[str, Any], output_path: Path) -> None:
-        """Save statistics as HTML dashboard."""
+        """
+        Save statistics as HTML dashboard.
+
+        Generates a self-contained HTML page with:
+        - Summary cards for key metrics (sessions, messages, tokens, code blocks)
+        - Work hours bar chart (24-hour distribution)
+        - Models used badges
+        - Session duration statistics
+        - Projects table sorted by token usage
+
+        The HTML uses:
+        - Inline CSS (no external dependencies)
+        - CSS variables for theming
+        - Responsive grid layout
+        - Pure CSS bar charts (no JavaScript required)
+
+        Args:
+            stats: Statistics dictionary from generate()
+            output_path: Path for output HTML file (typically stats.html)
+        """
         agg = stats["aggregate"]
         projects = stats["projects"]
 

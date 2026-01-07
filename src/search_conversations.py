@@ -1,41 +1,114 @@
 #!/usr/bin/env python3
 """
-Search functionality for Claude Sessions
+Search functionality for Claude Sessions.
 
-This module provides powerful search capabilities including:
-- Full-text search with relevance ranking
-- Regex pattern matching
-- Date range filtering
-- Speaker filtering (Human/Assistant)
-- Semantic search using NLP
+This module provides powerful search capabilities for Claude Code session logs.
+It supports multiple search modes from simple string matching to NLP-based
+semantic search, with filtering by date range and speaker.
 
-Adapted from CAKE's conversation parser for Claude conversation search.
+Search Modes:
+    - smart: Default mode combining token matching, proximity scoring, and exact match
+    - exact: Simple case-sensitive/insensitive substring matching
+    - regex: Regular expression pattern matching
+    - semantic: NLP-based search using spaCy (requires optional dependency)
+
+Relevance Scoring:
+    Results are ranked by relevance using multiple factors:
+    - Exact match bonus: Full query string found in content
+    - Token overlap: Percentage of query words found in content
+    - Proximity bonus: Query terms appearing close together
+    - Match density: Multiple occurrences increase score
+
+Optional Dependencies:
+    - spaCy (pip install spacy): Enables semantic search mode
+    - en_core_web_sm model (python -m spacy download en_core_web_sm)
+
+Configuration:
+    Search behavior is controlled by the SearchConfig dataclass. A default
+    CONFIG instance is used, but custom configurations can be created.
+
+For architecture overview, see:
+    docs/ARCHITECTURE.md
+
+For JSONL input format, see:
+    docs/JSONL_FORMAT.md
+
+Example:
+    >>> from search_conversations import ConversationSearcher
+    >>> searcher = ConversationSearcher()
+    >>> results = searcher.search("authentication", mode="smart", max_results=10)
+    >>> for result in results:
+    ...     print(f"{result.speaker}: {result.relevance_score:.0%}")
+    ...     print(result.context)
+
+Classes:
+    SearchConfig: Configuration constants for search operations
+    SearchResult: Data container for a single search result
+    ConversationSearcher: Main search engine class
+
+Functions:
+    create_search_index: Create a pre-computed search index for faster searches
+
+Module Constants:
+    CONFIG: Default SearchConfig instance
+    SPACY_AVAILABLE: True if spaCy is installed
 """
 
 import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Union
 
-try:
-    from utils import extract_text, parse_timestamp
-except ImportError:
-    from .utils import extract_text, parse_timestamp
+from .utils import extract_text, parse_timestamp
 
 # Optional NLP imports for semantic search
 try:
     import spacy
-
     SPACY_AVAILABLE = True
 except ImportError:
+    spacy = None
     SPACY_AVAILABLE = False
+
+
+class SearchMode(Enum):
+    """
+    Enumeration of available search modes.
+
+    Attributes:
+        SMART: Default mode combining token matching, proximity scoring, and exact match
+        EXACT: Simple case-sensitive/insensitive substring matching
+        REGEX: Regular expression pattern matching
+        SEMANTIC: NLP-based search using spaCy (requires optional dependency)
+    """
+    SMART = "smart"
+    EXACT = "exact"
+    REGEX = "regex"
+    SEMANTIC = "semantic"
 
 
 @dataclass(frozen=True)
 class SearchConfig:
-    """Configuration constants for search operations."""
+    """
+    Configuration constants for search operations.
+
+    This frozen dataclass holds all tunable parameters for the search engine.
+    A default CONFIG instance is provided, but custom configurations can be
+    created for testing or specialized search behavior.
+
+    Attribute Groups:
+        Display Settings: Control result formatting and truncation
+        Topic Extraction: Configure NLP-based topic extraction
+        Relevance Scoring: Tune the relevance calculation algorithm
+
+    Example:
+        >>> custom_config = SearchConfig(max_results=50, relevance_threshold=0.2)
+
+    See Also:
+        _calculate_relevance() for how these values are used in scoring
+    """
 
     # Display settings
     major_separator_width: int = 60
@@ -74,7 +147,29 @@ CONFIG = SearchConfig()
 
 @dataclass
 class SearchResult:
-    """Represents a search result with context"""
+    """
+    Represents a search result with context.
+
+    Each search result contains the matched content, surrounding context for
+    display, metadata about where the match was found, and a relevance score
+    for ranking results.
+
+    Attributes:
+        file_path (Path): Path to the JSONL file containing the match
+        conversation_id (str): Session ID (filename without extension)
+        matched_content (str): The content that matched the query (truncated)
+        context (str): Surrounding text for display (with query highlighted)
+        speaker (str): Who said it - 'human' or 'assistant'
+        timestamp (datetime): When the message was sent (if available)
+        relevance_score (float): Score from 0.0 to 1.0 indicating match quality
+        line_number (int): Line number in JSONL file where match was found
+
+    Example:
+        >>> result = results[0]
+        >>> print(f"Found in {result.file_path.name} by {result.speaker}")
+        >>> print(f"Relevance: {result.relevance_score:.0%}")
+        >>> print(result.context)
+    """
 
     file_path: Path
     conversation_id: str
@@ -86,7 +181,7 @@ class SearchResult:
     line_number: int = 0
 
     def __str__(self) -> str:
-        """User-friendly string representation"""
+        """User-friendly string representation for terminal output."""
         sep = "=" * CONFIG.major_separator_width
         return (
             f"\n{sep}\n"
@@ -102,19 +197,42 @@ class ConversationSearcher:
     """
     Main search engine for Claude conversations.
 
-    Provides multiple search modes and intelligent ranking.
+    This class provides comprehensive search capabilities across Claude Code
+    session logs. It supports multiple search modes, date filtering, speaker
+    filtering, and intelligent relevance ranking.
+
+    Search Modes:
+        - smart (default): Multi-factor relevance scoring with token matching,
+          proximity analysis, and exact match bonuses
+        - exact: Simple substring matching, good for specific phrases
+        - regex: Regular expression pattern matching
+        - semantic: NLP-based conceptual search using spaCy (optional)
+
+    Features:
+        - Searches all JSONL files recursively in target directory
+        - Filters by date range (file modification time)
+        - Filters by speaker (human/assistant)
+        - Extracts context around matches for display
+        - Highlights matched text in context
+        - Ranks results by configurable relevance score
+
+    Attributes:
+        nlp: spaCy NLP model instance (None if spaCy unavailable)
+        stop_words (set): Common words excluded from relevance scoring
+
+    Example:
+        >>> searcher = ConversationSearcher()
+        >>> # Smart search with defaults
+        >>> results = searcher.search("API authentication")
+        >>> # Regex search with speaker filter
+        >>> results = searcher.search(r"error\\s+\\d+", mode="regex", speaker_filter="assistant")
+        >>> # Date-filtered search
+        >>> from datetime import datetime
+        >>> results = searcher.search("bug fix", date_from=datetime(2024, 1, 1))
     """
 
-    def __init__(self, cache_dir: Optional[Path] = None):
-        """
-        Initialize the searcher.
-
-        Args:
-            cache_dir: Optional directory for caching processed conversations
-        """
-        self.cache_dir = cache_dir or Path.home() / ".claude" / ".search_cache"
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-
+    def __init__(self) -> None:
+        """Initialize the searcher with optional NLP support."""
         # Initialize NLP if available
         self.nlp = None
         if SPACY_AVAILABLE:
@@ -172,7 +290,7 @@ class ConversationSearcher:
         self,
         query: str,
         search_dir: Optional[Path] = None,
-        mode: str = "smart",
+        mode: Union[SearchMode, str] = SearchMode.SMART,
         date_from: Optional[datetime] = None,
         date_to: Optional[datetime] = None,
         speaker_filter: Optional[str] = None,
@@ -185,7 +303,7 @@ class ConversationSearcher:
         Args:
             query: Search query (text or regex pattern)
             search_dir: Directory to search in (default: ~/.claude/projects)
-            mode: Search mode - "smart", "exact", "regex", "semantic"
+            mode: Search mode - SearchMode enum or string ("smart", "exact", "regex", "semantic")
             date_from: Filter results from this date
             date_to: Filter results until this date
             speaker_filter: Filter by speaker - "human", "assistant", or None for both
@@ -216,19 +334,22 @@ class ConversationSearcher:
         if date_from or date_to:
             jsonl_files = self._filter_files_by_date(jsonl_files, date_from, date_to)
 
+        # Normalize mode to enum value string for comparison
+        mode_value = mode.value if isinstance(mode, SearchMode) else mode
+
         # Search based on mode
         all_results = []
 
         for jsonl_file in jsonl_files:
-            if mode == "regex":
+            if mode_value == SearchMode.REGEX.value:
                 results = self._search_regex(
                     jsonl_file, query, speaker_filter, case_sensitive
                 )
-            elif mode == "exact":
+            elif mode_value == SearchMode.EXACT.value:
                 results = self._search_exact(
                     jsonl_file, query, speaker_filter, case_sensitive
                 )
-            elif mode == "semantic" and self.nlp:
+            elif mode_value == SearchMode.SEMANTIC.value and self.nlp:
                 results = self._search_semantic(jsonl_file, query, speaker_filter)
             else:  # smart mode - combines multiple approaches
                 results = self._search_smart(
@@ -249,7 +370,20 @@ class ConversationSearcher:
         date_from: Optional[datetime],
         date_to: Optional[datetime],
     ) -> List[Path]:
-        """Filter files by modification date."""
+        """
+        Filter files by modification date.
+
+        Uses file system mtime to filter files. This is a fast pre-filter that
+        avoids parsing files that are outside the date range.
+
+        Args:
+            files: List of file paths to filter
+            date_from: Include files modified after this date (inclusive)
+            date_to: Include files modified before this date (inclusive)
+
+        Returns:
+            Filtered list of file paths within date range
+        """
         filtered = []
 
         for file in files:
@@ -351,7 +485,21 @@ class ConversationSearcher:
         speaker_filter: Optional[str],
         case_sensitive: bool,
     ) -> List[SearchResult]:
-        """Exact string matching search."""
+        """
+        Exact string matching search.
+
+        Performs simple substring matching. Relevance is calculated based on
+        the number of times the query appears in the content.
+
+        Args:
+            jsonl_file: Path to session JSONL file
+            query: Exact string to search for
+            speaker_filter: Optional filter for 'human' or 'assistant'
+            case_sensitive: Whether to match case exactly
+
+        Returns:
+            List of SearchResult for messages containing the exact query
+        """
         results = []
         conversation_id = jsonl_file.stem
 
@@ -423,7 +571,24 @@ class ConversationSearcher:
         speaker_filter: Optional[str],
         case_sensitive: bool,
     ) -> List[SearchResult]:
-        """Regex pattern matching search."""
+        """
+        Regex pattern matching search.
+
+        Compiles the pattern as a regular expression and searches for matches.
+        Context is extracted around the first match in each message.
+
+        Args:
+            jsonl_file: Path to session JSONL file
+            pattern: Regular expression pattern (Python re syntax)
+            speaker_filter: Optional filter for 'human' or 'assistant'
+            case_sensitive: Whether regex should be case-sensitive
+
+        Returns:
+            List of SearchResult for messages matching the regex
+
+        Note:
+            Invalid regex patterns result in an error message and empty results.
+        """
         results = []
         conversation_id = jsonl_file.stem
 
@@ -568,7 +733,21 @@ class ConversationSearcher:
         return results
 
     def _extract_content(self, entry: Dict[str, Any]) -> str:
-        """Extract text content from a JSONL entry."""
+        """
+        Extract text content from a JSONL entry.
+
+        Handles two formats:
+        1. Test format: {"type": "user", "content": "text"}
+        2. Claude log format: {"type": "user", "message": {"content": "text"}}
+
+        Uses the shared extract_text utility for handling content arrays.
+
+        Args:
+            entry: Parsed JSONL entry dictionary
+
+        Returns:
+            Extracted text content, or empty string if no content found
+        """
         # Handle test format (type: user/assistant, content: string)
         if entry.get("type") in ["user", "assistant"] and "content" in entry:
             content = entry["content"]
@@ -781,7 +960,34 @@ def create_search_index(search_dir: Path, output_file: Path) -> None:
     """
     Create a search index for faster subsequent searches.
 
-    This pre-processes all conversations and saves metadata.
+    Pre-processes all conversations in the search directory and saves metadata
+    to a JSON file. The index includes conversation counts, timestamps, and
+    speaker information for quick filtering without parsing JSONL files.
+
+    Index Structure:
+        {
+            "created": "2024-01-15T10:00:00",
+            "conversations": {
+                "session-id": {
+                    "path": "/path/to/session.jsonl",
+                    "modified": "2024-01-15T10:00:00",
+                    "size": 12345,
+                    "message_count": 42,
+                    "speakers": ["human", "assistant"],
+                    "first_message": "2024-01-15T10:00:00.000Z",
+                    "last_message": "2024-01-15T11:00:00.000Z"
+                }
+            }
+        }
+
+    Args:
+        search_dir: Directory containing JSONL session files (searched recursively)
+        output_file: Path for output JSON index file
+
+    Note:
+        This function is currently standalone and not integrated with
+        ConversationSearcher. Future enhancement could use this index
+        for faster searches.
     """
     index = {"created": datetime.now().isoformat(), "conversations": {}}
 
