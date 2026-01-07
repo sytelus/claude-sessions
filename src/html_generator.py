@@ -716,6 +716,21 @@ function initSearch() {
     });
 }
 
+// Toggle more sessions visibility
+function toggleMoreSessions(projectId) {
+    const container = document.getElementById('hidden-sessions-' + projectId);
+    const btn = document.getElementById('toggle-btn-' + projectId);
+    if (container && btn) {
+        if (container.style.display === 'none') {
+            container.style.display = 'block';
+            btn.textContent = 'Show fewer sessions';
+        } else {
+            container.style.display = 'none';
+            btn.textContent = btn.dataset.originalText;
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', initSearch);
 """
 
@@ -745,7 +760,7 @@ def format_short_name(project_name: str, max_len: int = 40) -> str:
 
 def generate_calendar_html(daily_usage: Dict[str, int]) -> str:
     """
-    Generate GitHub-style activity calendar HTML.
+    Generate GitHub-style activity calendar HTML for the last 4 weeks.
 
     Args:
         daily_usage: Dictionary of date strings to session counts
@@ -756,14 +771,22 @@ def generate_calendar_html(daily_usage: Dict[str, int]) -> str:
     if not daily_usage:
         return '<p class="muted">No activity data available</p>'
 
-    # Get date range (last 365 days or available data)
+    # Get date range (last 4 weeks = 28 days)
     today = datetime.now().date()
-    start_date = today - timedelta(days=364)
+    start_date = today - timedelta(days=27)  # 4 weeks = 28 days
 
-    # Find max for color scaling
-    max_count = max(daily_usage.values()) if daily_usage else 1
+    # Find max for color scaling (within our 4 week range)
+    max_count = 1
+    for i in range(28):
+        date_str = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
+        count = daily_usage.get(date_str, 0)
+        if count > max_count:
+            max_count = count
 
-    # Generate weeks
+    # Day labels
+    day_labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+    # Generate weeks (4 weeks total)
     weeks_html = []
     current_date = start_date
 
@@ -771,46 +794,60 @@ def generate_calendar_html(daily_usage: Dict[str, int]) -> str:
     while current_date.weekday() != 6:  # 6 = Sunday
         current_date -= timedelta(days=1)
 
-    months_seen = set()
-    month_markers = []
-
-    while current_date <= today:
+    week_num = 1
+    while current_date <= today and week_num <= 5:  # Allow up to 5 partial weeks
         week_html = ['<div class="calendar-week">']
         for _ in range(7):
-            if current_date <= today:
-                date_str = current_date.strftime("%Y-%m-%d")
-                count = daily_usage.get(date_str, 0)
+            date_str = current_date.strftime("%Y-%m-%d")
+            count = daily_usage.get(date_str, 0)
 
-                # Determine level (0-4)
-                if count == 0:
-                    level = 0
-                elif count <= max_count * 0.25:
-                    level = 1
-                elif count <= max_count * 0.5:
-                    level = 2
-                elif count <= max_count * 0.75:
-                    level = 3
-                else:
-                    level = 4
+            # Determine level (0-4)
+            if count == 0:
+                level = 0
+            elif count <= max_count * 0.25:
+                level = 1
+            elif count <= max_count * 0.5:
+                level = 2
+            elif count <= max_count * 0.75:
+                level = 3
+            else:
+                level = 4
 
-                month = current_date.strftime("%b")
-                if month not in months_seen and current_date.day <= 7:
-                    months_seen.add(month)
-                    month_markers.append((len(weeks_html), month))
-
+            # Hide days outside our range but keep structure
+            if current_date < start_date or current_date > today:
+                week_html.append('<div class="calendar-day" style="visibility:hidden"></div>')
+            else:
                 week_html.append(
                     f'<div class="calendar-day" data-level="{level}" '
                     f'title="{date_str}: {count} sessions"></div>'
                 )
-            else:
-                week_html.append('<div class="calendar-day" style="visibility:hidden"></div>')
             current_date += timedelta(days=1)
         week_html.append('</div>')
         weeks_html.append(''.join(week_html))
+        week_num += 1
+
+    # Generate week labels (dates for each week)
+    week_labels = []
+    label_date = start_date
+    while label_date.weekday() != 6:
+        label_date -= timedelta(days=1)
+    for i in range(len(weeks_html)):
+        week_start = label_date + timedelta(days=i * 7)
+        week_labels.append(week_start.strftime("%b %d"))
 
     calendar = f'''
-        <div class="calendar-grid">
-            {''.join(weeks_html)}
+        <div class="calendar-wrapper" style="display: flex; gap: 8px;">
+            <div class="calendar-day-labels" style="display: flex; flex-direction: column; gap: 3px; padding-top: 24px;">
+                {''.join(f'<div style="height: 12px; font-size: 10px; color: var(--muted); line-height: 12px;">{day}</div>' for day in day_labels)}
+            </div>
+            <div>
+                <div class="calendar-week-labels" style="display: flex; gap: 3px; margin-bottom: 4px;">
+                    {''.join(f'<div style="width: 12px; font-size: 9px; color: var(--muted); text-align: center; white-space: nowrap;">{label if i % 2 == 0 else ""}</div>' for i, label in enumerate(week_labels))}
+                </div>
+                <div class="calendar-grid">
+                    {''.join(weeks_html)}
+                </div>
+            </div>
         </div>
         <div class="calendar-legend">
             Less
@@ -987,12 +1024,13 @@ class HtmlGenerator:
                     <div class="sessions-list">
 """
 
-            # Add session items with previews
-            for session in proj["sessions"][:20]:  # Limit to 20 most recent
+            # Add session items with previews (first 20 visible)
+            for session in proj["sessions"][:20]:
                 session_id = session["id"]
                 session_date = session.get("date", "")
                 preview = html.escape(session.get("preview", "")[:50]) if session.get("preview") else ""
                 html_path = f"{proj['name']}/html/{session_id}.html"
+                html_exists = session.get("html_exists", False)
 
                 html_content += f"""
                         <div class="session-item">
@@ -1002,15 +1040,44 @@ class HtmlGenerator:
                                 {f'<span class="session-preview" title="{preview}">{preview}...</span>' if preview else ''}
                             </div>
                             <div class="session-links">
-                                <a href="{html.escape(html_path)}" class="session-link">View</a>
+                                {f'<a href="{html.escape(html_path)}" class="session-link">View</a>' if html_exists else '<span class="session-link" style="opacity: 0.5; cursor: not-allowed;">No HTML</span>'}
                             </div>
                         </div>
 """
 
+            # Show additional sessions in a hidden container
             if proj["session_count"] > 20:
+                extra_count = proj['session_count'] - 20
                 html_content += f"""
-                        <div class="session-item" style="justify-content: center; color: var(--muted);">
-                            +{proj['session_count'] - 20} more sessions
+                        <div id="hidden-sessions-{project_id}" style="display: none;">
+"""
+                for session in proj["sessions"][20:]:
+                    session_id = session["id"]
+                    session_date = session.get("date", "")
+                    preview = html.escape(session.get("preview", "")[:50]) if session.get("preview") else ""
+                    html_path = f"{proj['name']}/html/{session_id}.html"
+                    html_exists = session.get("html_exists", False)
+
+                    html_content += f"""
+                            <div class="session-item">
+                                <div class="session-info">
+                                    <span class="session-id" title="{html.escape(session_id)}">{html.escape(session_id[:20])}...</span>
+                                    <span class="session-date">{html.escape(session_date)}</span>
+                                    {f'<span class="session-preview" title="{preview}">{preview}...</span>' if preview else ''}
+                                </div>
+                                <div class="session-links">
+                                    {f'<a href="{html.escape(html_path)}" class="session-link">View</a>' if html_exists else '<span class="session-link" style="opacity: 0.5; cursor: not-allowed;">No HTML</span>'}
+                                </div>
+                            </div>
+"""
+                html_content += """
+                        </div>
+"""
+                html_content += f"""
+                        <div class="session-item" style="justify-content: center;">
+                            <button id="toggle-btn-{project_id}" data-original-text="+{extra_count} more sessions" onclick="toggleMoreSessions('{project_id}')" style="background: var(--primary-light); color: var(--primary); border: none; padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 500;">
+                                +{extra_count} more sessions
+                            </button>
                         </div>
 """
 
@@ -1394,6 +1461,18 @@ def generate_stats_html(stats: Dict[str, Any], output_path: Path) -> None:
                 <div class="card">
                     <div class="card-title">Code Blocks Generated</div>
                     <div class="card-value">{agg.get('total_code_blocks', 0):,}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Code Lines in Blocks</div>
+                    <div class="card-value">{agg.get('total_code_lines', 0):,}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Lines Written (Write)</div>
+                    <div class="card-value">{agg.get('total_lines_written', 0):,}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">Lines Edited (Edit)</div>
+                    <div class="card-value">{agg.get('total_lines_edited', 0):,}</div>
                 </div>
                 <div class="card">
                     <div class="card-title">Thinking Blocks</div>

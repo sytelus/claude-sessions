@@ -318,7 +318,7 @@ class FormatConverter:
             if dt:
                 timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        # Session-specific CSS additions
+        # Session-specific CSS additions with terminal-like styling
         session_css = """
 .messages-container { max-width: 900px; margin: 0 auto; }
 .session-header {
@@ -337,6 +337,7 @@ class FormatConverter:
     margin-bottom: 16px;
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow);
+    position: relative;
 }
 .message.user { border-left: 4px solid var(--user-color); }
 .message.assistant { border-left: 4px solid var(--assistant-color); }
@@ -350,33 +351,124 @@ class FormatConverter:
     gap: 8px;
 }
 .role-user { color: var(--user-color); }
+.role-user::before { content: '❯ '; color: var(--user-color); }
 .role-assistant { color: var(--assistant-color); }
+.role-assistant::before { content: '◆ '; color: var(--assistant-color); }
 .role-tool { color: var(--tool-color); }
-.content { white-space: pre-wrap; word-wrap: break-word; line-height: 1.7; }
+.role-tool::before { content: '⚙ '; color: var(--tool-color); }
+.content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    line-height: 1.7;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+/* Code block styling - terminal like */
+.content-code {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    padding: 16px;
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+    font-size: 0.9em;
+    line-height: 1.5;
+    margin: 12px 0;
+    border: 1px solid #333;
+}
+.content-code .line-number {
+    color: #6e7681;
+    user-select: none;
+    padding-right: 16px;
+    text-align: right;
+    min-width: 40px;
+    display: inline-block;
+}
+/* Syntax highlighting classes */
+.content-code .keyword { color: #c586c0; }
+.content-code .string { color: #ce9178; }
+.content-code .comment { color: #6a9955; }
+.content-code .function { color: #dcdcaa; }
+.content-code .number { color: #b5cea8; }
+.content-code .operator { color: #d4d4d4; }
 .thinking {
-    background: var(--bg-alt);
-    border: 1px solid var(--border);
+    background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+    border: 1px solid #c4b5fd;
     border-radius: var(--radius-sm);
     padding: 12px;
     margin-bottom: 12px;
     font-size: 0.9em;
-    color: var(--text-secondary);
+    color: #6b21a8;
+}
+[data-theme="dark"] .thinking {
+    background: linear-gradient(135deg, #2e1065 0%, #1e1b4b 100%);
+    border-color: #4c1d95;
+    color: #c4b5fd;
 }
 .thinking summary { cursor: pointer; font-weight: 600; }
+.thinking summary::before { content: '🧠 '; }
 pre {
-    background: var(--bg-alt);
+    background: #1e1e1e;
+    color: #d4d4d4;
     padding: 12px;
     border-radius: var(--radius-sm);
     overflow-x: auto;
-    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
     font-size: 0.85em;
-    border: 1px solid var(--border);
+    border: 1px solid #333;
 }
 code {
     background: var(--bg-alt);
     padding: 2px 6px;
     border-radius: 4px;
-    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+}
+.tool-call {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    color: #92400e;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-top: 10px;
+    font-size: 0.875rem;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+    border: 1px solid #f59e0b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.tool-call::before { content: '⚡'; }
+[data-theme="dark"] .tool-call {
+    background: linear-gradient(135deg, #451a03 0%, #78350f 100%);
+    color: #fde68a;
+    border-color: #b45309;
+}
+[data-theme="dark"] .message.tool { background: #2d2006; }
+/* Tool result styling */
+.tool-result {
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-top: 8px;
+}
+.tool-result.error {
+    background: #fef2f2;
+    border-color: #fca5a5;
+}
+[data-theme="dark"] .tool-result {
+    background: #14532d;
+    border-color: #22c55e;
+}
+[data-theme="dark"] .tool-result.error {
+    background: #7f1d1d;
+    border-color: #ef4444;
+}
+/* Timestamp styling */
+.timestamp {
+    font-size: 0.75rem;
+    color: var(--muted);
+    position: absolute;
+    top: 8px;
+    right: 12px;
 }
 """
 
@@ -431,18 +523,31 @@ code {
                     f.write('            </div>\n')
 
                 elif msg_type == "assistant":
+                    # Skip assistant messages with no content, thinking, or tool calls
+                    thinking = msg.get("thinking")
+                    tool_calls = msg.get("tool_calls")
+                    if not content and not thinking and not tool_calls:
+                        continue
+
                     f.write('            <div class="message assistant">\n')
                     f.write('                <div class="role role-assistant">Claude</div>\n')
 
                     # Thinking
-                    thinking = msg.get("thinking")
                     if thinking:
                         f.write('                <details class="thinking">\n')
                         f.write('                    <summary>Thinking</summary>\n')
                         f.write(f'                    <p>{html.escape(thinking)}</p>\n')
                         f.write('                </details>\n')
 
-                    f.write(f'                <div class="content">{content}</div>\n')
+                    if content:
+                        f.write(f'                <div class="content">{content}</div>\n')
+
+                    # Show tool calls inline if present
+                    if tool_calls:
+                        for tc in tool_calls:
+                            tool_name = html.escape(tc.get("name", "unknown"))
+                            f.write(f'                <div class="tool-call"><strong>Tool:</strong> {tool_name}</div>\n')
+
                     f.write('            </div>\n')
 
                 elif msg_type in ["tool_use", "tool_result"]:

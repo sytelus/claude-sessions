@@ -169,6 +169,9 @@ class StatisticsGenerator:
             "total_cache_read_tokens": 0,
             "total_cache_creation_tokens": 0,
             "total_code_blocks": 0,
+            "total_code_lines": 0,  # Lines in code blocks
+            "total_lines_written": 0,  # Lines written via Write tool
+            "total_lines_edited": 0,  # Lines changed via Edit tool
             "total_apologies": 0,
             "total_tool_uses": 0,
             "total_tool_errors": 0,
@@ -202,6 +205,9 @@ class StatisticsGenerator:
                 aggregate["total_cache_read_tokens"] += project_stats.get("cache_read_tokens", 0)
                 aggregate["total_cache_creation_tokens"] += project_stats.get("cache_creation_tokens", 0)
                 aggregate["total_code_blocks"] += project_stats["code_blocks"]
+                aggregate["total_code_lines"] += project_stats.get("code_lines", 0)
+                aggregate["total_lines_written"] += project_stats.get("lines_written", 0)
+                aggregate["total_lines_edited"] += project_stats.get("lines_edited", 0)
                 aggregate["total_apologies"] += project_stats["apologies"]
                 aggregate["total_tool_uses"] += project_stats.get("tool_uses", 0)
                 aggregate["total_tool_errors"] += project_stats.get("tool_errors", 0)
@@ -335,6 +341,9 @@ class StatisticsGenerator:
             "cache_read_tokens": 0,
             "cache_creation_tokens": 0,
             "code_blocks": 0,
+            "code_lines": 0,
+            "lines_written": 0,
+            "lines_edited": 0,
             "apologies": 0,
             "thinking_blocks": 0,
             "session_durations": [],
@@ -368,6 +377,9 @@ class StatisticsGenerator:
             stats["cache_read_tokens"] += session_stats.get("cache_read_tokens", 0)
             stats["cache_creation_tokens"] += session_stats.get("cache_creation_tokens", 0)
             stats["code_blocks"] += session_stats["code_blocks"]
+            stats["code_lines"] += session_stats.get("code_lines", 0)
+            stats["lines_written"] += session_stats.get("lines_written", 0)
+            stats["lines_edited"] += session_stats.get("lines_edited", 0)
             stats["apologies"] += session_stats["apologies"]
             stats["thinking_blocks"] += session_stats.get("thinking_blocks", 0)
 
@@ -472,6 +484,9 @@ class StatisticsGenerator:
             "cache_read_tokens": 0,
             "cache_creation_tokens": 0,
             "code_blocks": 0,
+            "code_lines": 0,
+            "lines_written": 0,
+            "lines_edited": 0,
             "apologies": 0,
             "thinking_blocks": 0,
             "duration_minutes": None,
@@ -534,6 +549,19 @@ class StatisticsGenerator:
                     code_blocks = re.findall(self.CODE_BLOCK_PATTERN, msg.content)
                     stats["code_blocks"] += len(code_blocks)
 
+                    # Count lines in code blocks
+                    for block in code_blocks:
+                        # Remove the ``` markers and count lines
+                        block_content = block.strip('`').strip()
+                        if block_content:
+                            # Remove language identifier on first line
+                            lines = block_content.split('\n')
+                            if lines and not lines[0].strip().startswith('```'):
+                                # First line might be language identifier
+                                if len(lines[0]) < 20 and not ' ' in lines[0]:
+                                    lines = lines[1:]  # Skip language line
+                            stats["code_lines"] += len([l for l in lines if l.strip()])
+
                     # Extract languages from code blocks
                     languages = re.findall(self.CODE_LANG_PATTERN, msg.content)
                     for lang in languages:
@@ -553,6 +581,8 @@ class StatisticsGenerator:
                         tool_input = tc.get("input", {})
                         if tool_input:
                             self._extract_file_paths(tool_input, stats["files_touched"])
+                            # Count lines written/edited
+                            self._count_code_lines(tool_name, tool_input, stats)
 
             elif msg.type == "tool_use":
                 # Fallback for separate tool_use entries (if any)
@@ -561,6 +591,8 @@ class StatisticsGenerator:
                     stats["tools_used"][msg.tool_name] += 1
                 if msg.tool_input:
                     self._extract_file_paths(msg.tool_input, stats["files_touched"])
+                    # Count lines written/edited
+                    self._count_code_lines(msg.tool_name, msg.tool_input, stats)
 
             elif msg.type == "tool_result":
                 # Track tool errors
@@ -625,6 +657,38 @@ class StatisticsGenerator:
                     else:
                         short_path = path
                     files_counter[short_path] += 1
+
+    def _count_code_lines(self, tool_name: str, tool_input: Dict[str, Any], stats: Dict[str, Any]) -> None:
+        """
+        Count lines of code written or edited via Write/Edit tools.
+
+        Examines tool inputs to count:
+        - Lines written via Write tool (content parameter)
+        - Lines changed via Edit tool (new_string parameter)
+
+        Args:
+            tool_name: Name of the tool being used
+            tool_input: Dictionary of tool input parameters
+            stats: Stats dictionary to update with line counts
+        """
+        if not tool_name or not tool_input:
+            return
+
+        tool_name_lower = tool_name.lower()
+
+        # Write tool - count lines in content
+        if tool_name_lower == "write":
+            content = tool_input.get("content", "")
+            if content and isinstance(content, str):
+                lines = [l for l in content.split('\n') if l.strip()]
+                stats["lines_written"] += len(lines)
+
+        # Edit tool - count lines in new_string
+        elif tool_name_lower == "edit":
+            new_string = tool_input.get("new_string", "")
+            if new_string and isinstance(new_string, str):
+                lines = [l for l in new_string.split('\n') if l.strip()]
+                stats["lines_edited"] += len(lines)
 
     def save_json(self, stats: Dict[str, Any], output_path: Path) -> None:
         """
