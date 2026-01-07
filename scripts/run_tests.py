@@ -10,7 +10,7 @@ import sys
 def main():
     """Run tests with coverage"""
 
-    print("🧪 Running Claude Conversation Extractor Tests\n")
+    print("🧪 Running Claude Sessions Tests\n")
 
     # Test suites to run
     test_suites = [

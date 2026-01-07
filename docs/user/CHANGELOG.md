@@ -1,9 +1,18 @@
-# Changelog - Claude Conversation Extractor Updates
+# Changelog - Claude Sessions
 
 All notable changes to the Claude Code export tool will be documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.1.2] - 2026-01-06 - Project Rename & Code Quality
+
+### Changed
+- **Project renamed** from "claude-conversation-extractor" to "claude-sessions"
+- Refactored magic numbers to named constants for better maintainability (PR #37)
+
+### Fixed
+- Fixed Unicode escape sequences in tool input output - non-ASCII characters (Korean, Chinese, Japanese, etc.) now display properly in detailed exports (PR #36)
 
 ## [1.1.1] - 2025-08-28 - View Conversations & Better Search Experience
 
@@ -90,4 +99,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Why This Tool Exists**: Claude Code stores all conversations locally but provides NO export functionality. Users were losing valuable AI programming sessions. This tool solves that problem.
 
-**Keywords**: claude conversation extractor changelog, claude code export updates, extract claude logs version history, backup claude sessions releases, claude jsonl to markdown changelog
+**Keywords**: claude sessions changelog, claude code export updates, extract claude logs version history, backup claude sessions releases, claude jsonl to markdown changelog

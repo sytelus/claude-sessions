@@ -1,4 +1,4 @@
-"""Pytest configuration for Claude Conversation Extractor tests."""
+"""Pytest configuration for Claude Sessions tests."""
 
 import sys
 from pathlib import Path

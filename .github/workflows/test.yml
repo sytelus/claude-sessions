@@ -30,12 +30,12 @@ jobs:
         
     - name: Lint with flake8
       run: |
-        flake8 extract_claude_logs.py --max-line-length=100
-        
+        flake8 src/ --max-line-length=100
+
     - name: Test CLI help
       run: |
         claude-extract --help
-        
+
     - name: Test module import
       run: |
-        python -c "import extract_claude_logs; print('Import successful')"
+        python -c "from src.extract_claude_logs import ClaudeConversationExtractor; print('Import successful')"

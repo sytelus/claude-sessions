@@ -1,4 +1,4 @@
-# SEO Optimization Summary - Claude Conversation Extractor
+# SEO Optimization Summary - Claude Sessions
 
 ## What We Optimized
 
@@ -18,7 +18,7 @@
   - claude-jsonl-to-markdown
 
 ### 3. **INSTALL.md** - Installation Guide
-- **Title**: "How to Install Claude Conversation Extractor - Export Claude Code Logs"
+- **Title**: "How to Install Claude Sessions - Export Claude Code Logs"
 - **Headers**: Platform-specific keywords ("Export Claude Code on macOS/Windows/Linux")
 - **Troubleshooting**: Addresses common search queries about installation issues
 - **Commands**: Emphasized throughout for featured snippets

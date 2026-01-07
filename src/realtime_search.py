@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fixed real-time search interface for Claude Conversation Extractor.
+Fixed real-time search interface for Claude Sessions.
 Properly handles arrow keys without printing escape sequences.
 """
 
