@@ -118,6 +118,7 @@ def cmd_backup(args):
     print(f"  - Markdown files: {convert_result.get('markdown', 0)}")
     print(f"  - HTML files: {convert_result.get('html', 0)}")
     print(f"  - Data files: {convert_result.get('data', 0)}")
+    print(f"  - Skipped (unchanged): {convert_result.get('skipped', 0)}")
     print()
 
     # Step 3: Generate statistics
@@ -180,7 +181,7 @@ def cmd_list(args):
     output_projects = {}
     if output_dir and output_dir.exists():
         for project_dir in sorted(output_dir.iterdir()):
-            if project_dir.is_dir() and project_dir.name not in ["stats.html", "stats.json"]:
+            if project_dir.is_dir():
                 jsonl_files = list(project_dir.glob("*.jsonl"))
                 if jsonl_files:
                     output_projects[project_dir.name] = len(jsonl_files)

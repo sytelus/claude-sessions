@@ -9,10 +9,15 @@ import html
 import json
 import re
 import statistics
-from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from collections import Counter
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
+
+try:
+    from parser import SessionParser, ParsedMessage
+except ImportError:
+    from .parser import SessionParser, ParsedMessage
 
 
 class StatisticsGenerator:
@@ -30,6 +35,9 @@ class StatisticsGenerator:
 
     # Patterns for detecting code blocks
     CODE_BLOCK_PATTERN = r"```[\s\S]*?```"
+
+    def __init__(self):
+        self.parser = SessionParser()
 
     def generate(self, output_dir: Path) -> Dict:
         """
@@ -249,7 +257,11 @@ class StatisticsGenerator:
         return stats
 
     def _analyze_session(self, jsonl_file: Path) -> Optional[Dict]:
-        """Analyze a single session file."""
+        """Analyze a single session file using the shared parser."""
+        messages = self.parser.parse_file(jsonl_file)
+        if not messages:
+            return None
+
         stats = {
             "total_messages": 0,
             "user_messages": 0,
@@ -271,68 +283,48 @@ class StatisticsGenerator:
         last_user_time = None
         all_timestamps = []
 
-        try:
-            with open(jsonl_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
-                        entry_type = entry.get("type")
+        for msg in messages:
+            # Track timestamps
+            if msg.timestamp_dt:
+                all_timestamps.append(msg.timestamp_dt)
+                stats["active_hours"].append(msg.timestamp_dt.hour)
 
-                        # Parse timestamp
-                        timestamp = self._parse_timestamp(entry.get("timestamp"))
-                        if timestamp:
-                            all_timestamps.append(timestamp)
-                            stats["active_hours"].append(timestamp.hour)
+            if msg.type == "user":
+                stats["user_messages"] += 1
+                stats["total_messages"] += 1
+                last_user_time = msg.timestamp_dt
 
-                        if entry_type == "user":
-                            stats["user_messages"] += 1
-                            stats["total_messages"] += 1
-                            last_user_time = timestamp
+            elif msg.type == "assistant":
+                stats["assistant_messages"] += 1
+                stats["total_messages"] += 1
 
-                        elif entry_type == "assistant":
-                            stats["assistant_messages"] += 1
-                            stats["total_messages"] += 1
+                # Extract usage
+                if msg.usage:
+                    input_tok = msg.usage.get("input_tokens", 0)
+                    output_tok = msg.usage.get("output_tokens", 0)
+                    stats["input_tokens"] += input_tok
+                    stats["output_tokens"] += output_tok
+                    stats["total_tokens"] += input_tok + output_tok
 
-                            message = entry.get("message", {})
+                # Track model
+                if msg.model and msg.model not in stats["models"]:
+                    stats["models"].append(msg.model)
 
-                            # Extract usage
-                            usage = message.get("usage", {})
-                            input_tok = usage.get("input_tokens", 0)
-                            output_tok = usage.get("output_tokens", 0)
-                            stats["input_tokens"] += input_tok
-                            stats["output_tokens"] += output_tok
-                            stats["total_tokens"] += input_tok + output_tok
+                # Calculate response time
+                if last_user_time and msg.timestamp_dt:
+                    delta = (msg.timestamp_dt - last_user_time).total_seconds()
+                    if 0 < delta < 600:  # Reasonable range (0-10 minutes)
+                        stats["response_times"].append(delta)
 
-                            # Track model
-                            model = message.get("model")
-                            if model and model not in stats["models"]:
-                                stats["models"].append(model)
+                # Analyze content for code blocks and apologies
+                if msg.content:
+                    stats["code_blocks"] += len(
+                        re.findall(self.CODE_BLOCK_PATTERN, msg.content)
+                    )
+                    stats["apologies"] += self._count_apologies(msg.content)
 
-                            # Calculate response time
-                            if last_user_time and timestamp:
-                                delta = (timestamp - last_user_time).total_seconds()
-                                if 0 < delta < 600:  # Reasonable range (0-10 minutes)
-                                    stats["response_times"].append(delta)
-
-                            # Analyze content
-                            content = message.get("content", [])
-                            if isinstance(content, list):
-                                for item in content:
-                                    if isinstance(item, dict) and item.get("type") == "text":
-                                        text = item.get("text", "")
-                                        stats["code_blocks"] += len(
-                                            re.findall(self.CODE_BLOCK_PATTERN, text)
-                                        )
-                                        stats["apologies"] += self._count_apologies(text)
-
-                        elif entry_type == "tool_use":
-                            stats["tool_uses"] += 1
-
-                    except json.JSONDecodeError:
-                        continue
-
-        except Exception:
-            return None
+            elif msg.type == "tool_use":
+                stats["tool_uses"] += 1
 
         # Calculate duration
         if all_timestamps:
@@ -342,15 +334,6 @@ class StatisticsGenerator:
             stats["duration_minutes"] = duration.total_seconds() / 60
 
         return stats
-
-    def _parse_timestamp(self, timestamp_str: Optional[str]) -> Optional[datetime]:
-        """Parse ISO timestamp string."""
-        if not timestamp_str:
-            return None
-        try:
-            return datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-        except Exception:
-            return None
 
     def _count_apologies(self, text: str) -> int:
         """Count apology patterns in text."""
@@ -371,7 +354,7 @@ class StatisticsGenerator:
         projects = stats["projects"]
 
         # Generate work hours chart data
-        work_hours_data = [agg["work_hours"].get(str(h), 0) for h in range(24)]
+        work_hours_data = [agg["work_hours"].get(h, 0) for h in range(24)]
         max_hour_count = max(work_hours_data) if work_hours_data else 1
 
         # Generate monthly trend data

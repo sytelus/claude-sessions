@@ -7,10 +7,14 @@ Converts JSONL session files to markdown, HTML, and structured data formats.
 
 import html
 import json
-import re
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
+
+try:
+    from parser import SessionParser
+except ImportError:
+    from .parser import SessionParser
 
 
 # Constants
@@ -20,18 +24,24 @@ INDENT = 2
 class FormatConverter:
     """Converts Claude session files to various output formats."""
 
+    def __init__(self):
+        self.parser = SessionParser()
+
     def convert_all(self, output_dir: Path, formats: List[str]) -> Dict:
         """
         Convert all JSONL files in output directory to specified formats.
+
+        Uses incremental conversion - skips files where output is newer than input.
 
         Args:
             output_dir: Output directory containing project folders
             formats: List of formats to generate ('markdown', 'html', 'data')
 
         Returns:
-            Dict with counts per format
+            Dict with counts per format and skipped count
         """
         result = {fmt: 0 for fmt in formats}
+        result["skipped"] = 0
 
         for project_dir in output_dir.iterdir():
             if not project_dir.is_dir():
@@ -47,11 +57,22 @@ class FormatConverter:
 
             # Process each JSONL file
             for jsonl_file in project_dir.glob("*.jsonl"):
-                messages = self._parse_jsonl(jsonl_file)
-                if not messages:
+                session_id = jsonl_file.stem
+                input_mtime = jsonl_file.stat().st_mtime
+
+                # Check if conversion is needed (incremental)
+                needs_conversion = self._needs_conversion(
+                    project_dir, session_id, formats, input_mtime
+                )
+
+                if not needs_conversion:
+                    result["skipped"] += 1
                     continue
 
-                session_id = jsonl_file.stem
+                # Parse the file once
+                messages = self.parser.parse_file_as_dicts(jsonl_file)
+                if not messages:
+                    continue
 
                 if "markdown" in formats:
                     md_path = project_dir / "markdown" / f"{session_id}.md"
@@ -70,148 +91,29 @@ class FormatConverter:
 
         return result
 
-    def _parse_jsonl(self, jsonl_path: Path) -> List[Dict]:
-        """Parse JSONL file and extract messages."""
-        messages = []
+    def _needs_conversion(
+        self, project_dir: Path, session_id: str, formats: List[str], input_mtime: float
+    ) -> bool:
+        """
+        Check if any output format needs to be regenerated.
 
-        try:
-            with open(jsonl_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
-                        parsed = self._parse_entry(entry)
-                        if parsed:
-                            messages.append(parsed)
-                    except json.JSONDecodeError:
-                        continue
-        except Exception:
-            pass
-
-        return messages
-
-    def _parse_entry(self, entry: Dict) -> Optional[Dict]:
-        """Parse a single JSONL entry into a normalized message."""
-        entry_type = entry.get("type")
-
-        if entry_type == "user":
-            return self._parse_user_message(entry)
-        elif entry_type == "assistant":
-            return self._parse_assistant_message(entry)
-        elif entry_type == "tool_use":
-            return self._parse_tool_use(entry)
-        elif entry_type == "tool_result":
-            return self._parse_tool_result(entry)
-
-        return None
-
-    def _parse_user_message(self, entry: Dict) -> Optional[Dict]:
-        """Parse user message entry."""
-        message = entry.get("message", {})
-        content = message.get("content", "")
-
-        text = self._extract_text(content)
-        if not text:
-            return None
-
-        return {
-            "type": "user",
-            "role": "user",
-            "content": text,
-            "timestamp": entry.get("timestamp"),
-            "uuid": entry.get("uuid"),
-            "session_id": entry.get("sessionId"),
+        Returns True if any output file is missing or older than input.
+        """
+        format_paths = {
+            "markdown": project_dir / "markdown" / f"{session_id}.md",
+            "html": project_dir / "html" / f"{session_id}.html",
+            "data": project_dir / "data" / f"{session_id}.json",
         }
 
-    def _parse_assistant_message(self, entry: Dict) -> Optional[Dict]:
-        """Parse assistant message entry."""
-        message = entry.get("message", {})
-        content = message.get("content", [])
+        for fmt in formats:
+            output_path = format_paths.get(fmt)
+            if output_path:
+                if not output_path.exists():
+                    return True
+                if output_path.stat().st_mtime < input_mtime:
+                    return True
 
-        text_parts = []
-        thinking = None
-        tool_calls = []
-
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict):
-                    if item.get("type") == "text":
-                        text_parts.append(item.get("text", ""))
-                    elif item.get("type") == "thinking":
-                        thinking = item.get("thinking", "")
-                    elif item.get("type") == "tool_use":
-                        tool_calls.append({
-                            "id": item.get("id"),
-                            "name": item.get("name"),
-                            "input": item.get("input", {}),
-                        })
-        elif isinstance(content, str):
-            text_parts.append(content)
-
-        text = "\n".join(text_parts).strip()
-        if not text and not thinking and not tool_calls:
-            return None
-
-        # Extract usage data
-        usage = message.get("usage", {})
-
-        return {
-            "type": "assistant",
-            "role": "assistant",
-            "content": text,
-            "thinking": thinking,
-            "tool_calls": tool_calls if tool_calls else None,
-            "timestamp": entry.get("timestamp"),
-            "uuid": entry.get("uuid"),
-            "session_id": entry.get("sessionId"),
-            "model": message.get("model"),
-            "usage": {
-                "input_tokens": usage.get("input_tokens", 0),
-                "output_tokens": usage.get("output_tokens", 0),
-                "cache_creation_input_tokens": usage.get("cache_creation_input_tokens", 0),
-                "cache_read_input_tokens": usage.get("cache_read_input_tokens", 0),
-            } if usage else None,
-            "stop_reason": message.get("stop_reason"),
-        }
-
-    def _parse_tool_use(self, entry: Dict) -> Optional[Dict]:
-        """Parse tool use entry."""
-        tool = entry.get("tool", {})
-
-        return {
-            "type": "tool_use",
-            "role": "tool",
-            "tool_name": tool.get("name", "unknown"),
-            "tool_input": tool.get("input", {}),
-            "timestamp": entry.get("timestamp"),
-            "uuid": entry.get("uuid"),
-        }
-
-    def _parse_tool_result(self, entry: Dict) -> Optional[Dict]:
-        """Parse tool result entry."""
-        result = entry.get("result", {})
-
-        return {
-            "type": "tool_result",
-            "role": "tool",
-            "output": result.get("output", ""),
-            "error": result.get("error"),
-            "timestamp": entry.get("timestamp"),
-            "uuid": entry.get("uuid"),
-        }
-
-    def _extract_text(self, content) -> str:
-        """Extract text from various content formats."""
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text_parts.append(item.get("text", ""))
-                elif isinstance(item, str):
-                    text_parts.append(item)
-            return "\n".join(text_parts)
-        return ""
+        return False
 
     def _write_markdown(self, messages: List[Dict], output_path: Path, session_id: str):
         """Write messages as markdown file."""

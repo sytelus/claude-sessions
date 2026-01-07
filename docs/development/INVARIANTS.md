@@ -66,9 +66,9 @@ For each session S:
 ### INV-M4: User Message Extraction Completeness
 ```
 For each session S in project P:
-    count(user_prompts in prompts.yaml for S) == count(user_messages in S.jsonl)
+    count(user_prompts in prompts.yaml for S) <= count(user_messages in S.jsonl)
 ```
-- All user messages are captured in prompts.yaml
+- User messages are captured in prompts.yaml (some are filtered: short responses like "y", "ok"; continuation messages; empty messages)
 
 ---
 

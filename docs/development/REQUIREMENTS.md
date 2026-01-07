@@ -201,5 +201,4 @@ Claude Sessions is a backup and analysis tool for Claude Code conversation sessi
 
 - Python 3.8+
 - PyYAML (for prompts.yaml generation)
-- Jinja2 or similar (for HTML generation)
-- Standard library: json, os, shutil, pathlib, datetime, statistics
+- Standard library: json, os, shutil, pathlib, datetime, statistics, html

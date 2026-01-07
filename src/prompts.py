@@ -7,9 +7,13 @@ Extracts user prompts from session files into readable YAML format.
 
 import json
 import re
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
+
+try:
+    from utils import extract_text
+except ImportError:
+    from .utils import extract_text
 
 try:
     import yaml
@@ -111,7 +115,7 @@ class PromptsExtractor:
         content = message.get("content", "")
 
         # Extract text content
-        text = self._extract_text(content)
+        text = extract_text(content)
         if not text:
             return None
 
@@ -134,21 +138,6 @@ class PromptsExtractor:
             prompt_data["timestamp"] = timestamp
 
         return prompt_data
-
-    def _extract_text(self, content) -> str:
-        """Extract text from content field."""
-        if isinstance(content, str):
-            return content
-        elif isinstance(content, list):
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict):
-                    if item.get("type") == "text":
-                        text_parts.append(item.get("text", ""))
-                elif isinstance(item, str):
-                    text_parts.append(item)
-            return "\n".join(text_parts)
-        return ""
 
     def _clean_prompt_text(self, text: str) -> str:
         """Clean up prompt text."""
@@ -197,16 +186,19 @@ class PromptsExtractor:
 
     def _save_as_yaml(self, data: Dict, output_path: Path):
         """Save using PyYAML library."""
-        # Custom representer for multiline strings
+        # Custom Dumper that handles multiline strings
+        class MultilineDumper(yaml.SafeDumper):
+            pass
+
         def str_representer(dumper, data):
             if "\n" in data:
                 return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
             return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
-        yaml.add_representer(str, str_representer)
+        MultilineDumper.add_representer(str, str_representer)
 
         with open(output_path, "w", encoding="utf-8") as f:
-            yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            yaml.dump(data, f, Dumper=MultilineDumper, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     def _save_as_yaml_manual(self, data: Dict, output_path: Path):
         """Save as YAML manually (without PyYAML dependency)."""

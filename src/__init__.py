@@ -7,6 +7,8 @@ from .backup import BackupManager
 from .formatters import FormatConverter
 from .stats import StatisticsGenerator
 from .prompts import PromptsExtractor
+from .parser import SessionParser, ParsedMessage
+from .utils import extract_text, parse_timestamp
 
 # Legacy exports for backwards compatibility
 from .extract_claude_logs import ClaudeConversationExtractor
@@ -17,6 +19,10 @@ __all__ = [
     "FormatConverter",
     "StatisticsGenerator",
     "PromptsExtractor",
+    "SessionParser",
+    "ParsedMessage",
+    "extract_text",
+    "parse_timestamp",
     "ClaudeConversationExtractor",
     "ConversationSearcher",
 ]

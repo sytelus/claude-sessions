@@ -2,90 +2,116 @@
 
 ## Project Overview
 
-This is a standalone tool that extracts Claude Code conversations from the
-undocumented JSONL format in `~/.claude/projects/` and converts them to clean
-markdown files. This is the FIRST publicly available solution for this problem.
+Claude Sessions is a backup and analysis tool for Claude Code conversations. It extracts
+conversations from the undocumented JSONL format in `~/.claude/projects/` and converts
+them to multiple formats (Markdown, HTML, structured JSON) with comprehensive statistics.
 
 ## Key Goals
 
-- **Professional Quality**: This project needs to be polished and professional -
-  it's important for the developer's family
-- **Easy Installation**: Setting up PyPI publishing so users can
-  `pip install claude-sessions`
-- **Wide Adoption**: Make this the go-to solution for Claude Code users
+- **Professional Quality**: Polished and professional tool
+- **Easy Installation**: Available via `pip install claude-sessions`
+- **Wide Adoption**: Go-to solution for Claude Code users
+- **Comprehensive Analytics**: Statistics dashboard for usage insights
 
 ## Repository Structure
 
 ```text
 claude-sessions/
-├── extract_claude_logs.py    # Main script
-├── setup.py                   # PyPI packaging configuration
-├── README.md                  # Professional documentation
-├── LICENSE                    # MIT License with disclaimer
-├── CONTRIBUTING.md            # Contribution guidelines
-├── requirements.txt           # No dependencies (stdlib only)
-├── .gitignore                # Python gitignore
-└── CLAUDE.md                 # This file
+├── src/
+│   ├── __init__.py           # Package exports
+│   ├── claude_sessions.py    # Main CLI entry point
+│   ├── backup.py             # Incremental backup logic
+│   ├── formatters.py         # Format converters (MD, HTML, JSON)
+│   ├── stats.py              # Statistics generation
+│   └── prompts.py            # User prompts extraction
+├── docs/
+│   ├── development/
+│   │   ├── CLAUDE.md         # This file
+│   │   ├── REQUIREMENTS.md   # Detailed specification
+│   │   └── INVARIANTS.md     # Validation invariants
+│   └── user/
+│       └── CHANGELOG.md      # Release history
+├── tests/                    # Test suite
+├── pyproject.toml            # Modern Python packaging
+├── README.md                 # User documentation
+├── LICENSE                   # MIT License
+└── .gitignore
 ```
 
 ## Development Workflow
 
 1. Always create feature branches for new work
-2. Ensure code passes flake8 linting (max-line-length=100)
+2. Ensure code passes linting
 3. Test manually before committing
-4. Update version numbers in setup.py for releases
+4. Update version numbers in pyproject.toml for releases
 5. Create detailed commit messages
+6. Update CHANGELOG.md for user-facing changes
 
-## Current Status
+## Current Status (v2.0)
 
-- ✅ Core functionality complete and tested
-- ✅ Professional documentation
-- ✅ Published to GitHub:
-  <https://github.com/ZeroSumQuant/claude-sessions>
-- 🚧 Setting up PyPI publishing
-- 📋 TODO: Add tests, CI/CD, screenshots
-
-## PyPI Publishing Setup (In Progress)
-
-1. Update setup.py with proper metadata
-2. Create pyproject.toml for modern packaging
-3. Set up GitHub Actions for automated publishing
-4. Register on PyPI and get API token
-5. Configure repository secrets
+- Single `claude-sessions` command
+- Incremental backup with timestamp preservation
+- Multiple output formats (Markdown, HTML, structured JSON)
+- Statistics dashboard (stats.html)
+- User prompts extraction (prompts.yaml)
+- Published on PyPI
 
 ## Testing Commands
 
 ```bash
-# Test extraction
-python3 extract_claude_logs.py --list
-python3 extract_claude_logs.py --extract 1
+# Run backup
+claude-sessions --output ~/backup
 
-# Lint check
-python3 -m flake8 extract_claude_logs.py --max-line-length=100
+# List projects
+claude-sessions --list
 
-# Test installation
-pip install -e .
+# Test from source
+PYTHONPATH=src python -c "from claude_sessions import main; main()"
+
+# Install for development
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+```
+
+## Architecture
+
+### Components
+
+1. **BackupManager** (`backup.py`): Handles incremental file synchronization
+2. **FormatConverter** (`formatters.py`): Converts JSONL to MD/HTML/JSON
+3. **StatisticsGenerator** (`stats.py`): Computes and renders statistics
+4. **PromptsExtractor** (`prompts.py`): Extracts user prompts to YAML
+
+### Data Flow
+
+```
+~/.claude/projects/     ──┐
+                          │  BackupManager
+                          ├──────────────────►  output/*.jsonl
+                          │
+                          │  FormatConverter
+                          ├──────────────────►  output/markdown/*.md
+                          │                     output/html/*.html
+                          │                     output/data/*.json
+                          │
+                          │  StatisticsGenerator
+                          ├──────────────────►  output/stats.html
+                          │                     output/stats.json
+                          │
+                          │  PromptsExtractor
+                          └──────────────────►  output/*/prompts.yaml
 ```
 
 ## Important Notes
 
-- No external dependencies (uses only Python stdlib)
+- Requires PyYAML for prompts extraction
 - Supports Python 3.8+
 - Cross-platform (Windows, macOS, Linux)
 - Read-only access to Claude's conversation files
-- Includes legal disclaimer for safety
-
-## Marketing/Sharing Plan
-
-- Anthropic Discord
-- r/ClaudeAI subreddit
-- Hacker News
-- Twitter/X with relevant hashtags
-- Create demo GIF showing the tool in action
+- Never deletes files from output (preserves history)
 
 ## Version History
 
-- 1.0.0 - Initial release (planned)
-  - Core extraction functionality
-  - Multiple output formats
-  - Batch operations
+See [CHANGELOG.md](../user/CHANGELOG.md) for detailed release history.
