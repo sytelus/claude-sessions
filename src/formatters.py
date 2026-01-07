@@ -52,6 +52,7 @@ from typing import Any, Dict, List
 
 from .parser import SessionParser
 from .utils import iter_project_dirs, parse_timestamp
+from .html_generator import SHARED_CSS
 
 
 # Constants
@@ -293,17 +294,17 @@ class FormatConverter:
         Write messages as self-contained HTML file.
 
         Generates a styled HTML document with:
-        - Inline CSS (no external dependencies)
-        - CSS variables for theming (--user-color, --assistant-color, etc.)
+        - Navigation bar linking to index and stats pages
+        - Shared CSS design system for consistency
         - Color-coded message cards with left border accents
         - Responsive layout (max-width: 900px, centered)
         - Collapsible <details> for thinking blocks
         - Pre-formatted tool inputs/outputs
 
         Color scheme:
-        - User messages: Blue (#3498db)
-        - Assistant messages: Green (#2ecc71)
-        - Tool operations: Orange (#f39c12)
+        - User messages: Blue (#3b82f6)
+        - Assistant messages: Green (#10b981)
+        - Tool operations: Orange (#f59e0b)
 
         Args:
             messages: List of parsed message dictionaries
@@ -317,101 +318,103 @@ class FormatConverter:
             if dt:
                 timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
+        # Session-specific CSS additions
+        session_css = """
+.messages-container { max-width: 900px; margin: 0 auto; }
+.session-header {
+    background: var(--card);
+    padding: 24px;
+    border-radius: var(--radius);
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+}
+.session-header h1 { font-size: 1.5rem; margin: 0 0 12px 0; }
+.session-meta { display: flex; gap: 24px; flex-wrap: wrap; font-size: 0.875rem; color: var(--muted); }
+.session-meta span { display: flex; align-items: center; gap: 6px; }
+.message {
+    background: var(--card);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow);
+}
+.message.user { border-left: 4px solid var(--user-color); }
+.message.assistant { border-left: 4px solid var(--assistant-color); }
+.message.tool { border-left: 4px solid var(--tool-color); background: #fffbf5; }
+.role {
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.role-user { color: var(--user-color); }
+.role-assistant { color: var(--assistant-color); }
+.role-tool { color: var(--tool-color); }
+.content { white-space: pre-wrap; word-wrap: break-word; line-height: 1.7; }
+.thinking {
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+.thinking summary { cursor: pointer; font-weight: 600; }
+pre {
+    background: var(--bg-alt);
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    overflow-x: auto;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    font-size: 0.85em;
+    border: 1px solid var(--border);
+}
+code {
+    background: var(--bg-alt);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+}
+"""
+
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Session - {html.escape(session_id[:16])}</title>
-    <style>
-        :root {{
-            --user-color: #3498db;
-            --assistant-color: #2ecc71;
-            --tool-color: #f39c12;
-            --bg-color: #f5f5f5;
-            --card-bg: white;
-            --text-color: #333;
-        }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            line-height: 1.6;
-            color: var(--text-color);
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 20px;
-            background: var(--bg-color);
-        }}
-        .header {{
-            background: var(--card-bg);
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        h1 {{ color: #2c3e50; margin: 0 0 10px 0; }}
-        .metadata {{ color: #666; font-size: 0.9em; }}
-        .message {{
-            background: var(--card-bg);
-            padding: 15px 20px;
-            margin-bottom: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .user {{ border-left: 4px solid var(--user-color); }}
-        .assistant {{ border-left: 4px solid var(--assistant-color); }}
-        .tool {{ border-left: 4px solid var(--tool-color); background: #fffbf0; }}
-        .role {{
-            font-weight: bold;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }}
-        .role-user {{ color: var(--user-color); }}
-        .role-assistant {{ color: var(--assistant-color); }}
-        .role-tool {{ color: var(--tool-color); }}
-        .content {{
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }}
-        .thinking {{
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 4px;
-            padding: 10px;
-            margin-bottom: 10px;
-            font-size: 0.9em;
-            color: #666;
-        }}
-        .thinking summary {{
-            cursor: pointer;
-            font-weight: bold;
-        }}
-        pre {{
-            background: #f4f4f4;
-            padding: 10px;
-            border-radius: 4px;
-            overflow-x: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-        }}
-        code {{
-            background: #f4f4f4;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: 'Courier New', monospace;
-        }}
-    </style>
+    <title>Session {html.escape(session_id[:16])} - Claude Sessions</title>
+    <style>{SHARED_CSS}{session_css}</style>
 </head>
 <body>
-    <div class="header">
-        <h1>Claude Conversation Log</h1>
-        <div class="metadata">
-            <p><strong>Session:</strong> {html.escape(session_id)}</p>
-            <p><strong>Date:</strong> {html.escape(timestamp_str)}</p>
-            <p><strong>Messages:</strong> {len(messages)}</p>
+    <nav class="nav">
+        <div class="nav-content">
+            <div class="nav-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                Claude Sessions
+            </div>
+            <div class="nav-links">
+                <a href="../../index.html">Browse</a>
+                <a href="../../stats.html">Statistics</a>
+            </div>
         </div>
-    </div>
+    </nav>
+
+    <div class="container">
+        <div class="session-header">
+            <h1>Conversation Log</h1>
+            <div class="session-meta">
+                <span><strong>Session:</strong> {html.escape(session_id[:24])}...</span>
+                <span><strong>Date:</strong> {html.escape(timestamp_str)}</span>
+                <span><strong>Messages:</strong> {len(messages)}</span>
+            </div>
+        </div>
+
+        <div class="messages-container">
 """
 
         with open(output_path, "w", encoding="utf-8") as f:
@@ -422,40 +425,47 @@ class FormatConverter:
                 content = html.escape(msg.get("content", ""))
 
                 if msg_type == "user":
-                    f.write('    <div class="message user">\n')
-                    f.write('        <div class="role role-user">User</div>\n')
-                    f.write(f'        <div class="content">{content}</div>\n')
-                    f.write('    </div>\n')
+                    f.write('            <div class="message user">\n')
+                    f.write('                <div class="role role-user">User</div>\n')
+                    f.write(f'                <div class="content">{content}</div>\n')
+                    f.write('            </div>\n')
 
                 elif msg_type == "assistant":
-                    f.write('    <div class="message assistant">\n')
-                    f.write('        <div class="role role-assistant">Claude</div>\n')
+                    f.write('            <div class="message assistant">\n')
+                    f.write('                <div class="role role-assistant">Claude</div>\n')
 
                     # Thinking
                     thinking = msg.get("thinking")
                     if thinking:
-                        f.write('        <details class="thinking">\n')
-                        f.write('            <summary>Thinking</summary>\n')
-                        f.write(f'            <p>{html.escape(thinking)}</p>\n')
-                        f.write('        </details>\n')
+                        f.write('                <details class="thinking">\n')
+                        f.write('                    <summary>Thinking</summary>\n')
+                        f.write(f'                    <p>{html.escape(thinking)}</p>\n')
+                        f.write('                </details>\n')
 
-                    f.write(f'        <div class="content">{content}</div>\n')
-                    f.write('    </div>\n')
+                    f.write(f'                <div class="content">{content}</div>\n')
+                    f.write('            </div>\n')
 
                 elif msg_type in ["tool_use", "tool_result"]:
-                    f.write('    <div class="message tool">\n')
+                    f.write('            <div class="message tool">\n')
                     if msg_type == "tool_use":
                         tool_name = html.escape(msg.get("tool_name", "unknown"))
-                        f.write(f'        <div class="role role-tool">Tool: {tool_name}</div>\n')
+                        f.write(f'                <div class="role role-tool">Tool: {tool_name}</div>\n')
                         tool_input = json.dumps(msg.get("tool_input", {}), indent=INDENT, ensure_ascii=False)
-                        f.write(f'        <pre>{html.escape(tool_input)}</pre>\n')
+                        f.write(f'                <pre>{html.escape(tool_input)}</pre>\n')
                     else:
-                        f.write('        <div class="role role-tool">Tool Result</div>\n')
+                        f.write('                <div class="role role-tool">Tool Result</div>\n')
                         output = html.escape(msg.get("output", "")[:2000])
-                        f.write(f'        <pre>{output}</pre>\n')
-                    f.write('    </div>\n')
+                        f.write(f'                <pre>{output}</pre>\n')
+                    f.write('            </div>\n')
 
-            f.write("\n</body>\n</html>")
+            f.write("""        </div>
+
+        <div class="footer">
+            <p>Generated by Claude Sessions</p>
+        </div>
+    </div>
+</body>
+</html>""")
 
     def _write_data(self, messages: List[Dict[str, Any]], output_path: Path, session_id: str, source_file: Path) -> None:
         """

@@ -87,6 +87,7 @@ Claude Sessions is a Python tool for backing up, converting, and analyzing Claud
 | `formatters.py` | `FormatConverter` | Convert JSONL to MD/HTML/JSON |
 | `stats.py` | `StatisticsGenerator` | Compute and render statistics |
 | `prompts.py` | `PromptsExtractor` | Extract user prompts to YAML |
+| `html_generator.py` | `HtmlGenerator` | Shared HTML/CSS and index generation |
 | `search_conversations.py` | `ConversationSearcher` | Multi-mode search engine |
 
 ### Support Modules
@@ -101,15 +102,20 @@ Claude Sessions is a Python tool for backing up, converting, and analyzing Claud
 ```
 claude_sessions.py
     ├── backup.py
-    ├── formatters.py ──────┐
-    │       └── parser.py   │
-    │           └── utils.py│
-    ├── stats.py ───────────┤
-    │       └── parser.py   │
-    │           └── utils.py│
-    ├── prompts.py ─────────┤
-    │       ├── parser.py   │
-    │       └── utils.py    │
+    ├── formatters.py ────────────┐
+    │       ├── parser.py         │
+    │       ├── utils.py          │
+    │       └── html_generator.py │
+    ├── stats.py ─────────────────┤
+    │       ├── parser.py         │
+    │       ├── utils.py          │
+    │       └── html_generator.py │
+    ├── prompts.py ───────────────┤
+    │       ├── parser.py         │
+    │       └── utils.py          │
+    ├── html_generator.py ────────┤
+    │       ├── parser.py         │
+    │       └── utils.py          │
     └── search_conversations.py
             └── utils.py
 ```
@@ -133,12 +139,16 @@ claude_sessions.py
        │                      (3) Statistics             │   ├── data/*.json
        │                      ────────────────────►      │   └── prompts.yaml
        │                                                 │
-       │                      (4) Prompts                ├── stats.html
-       │                      ────────────────────►      └── stats.json
+       │                      (4) Prompts                ├── index.html  (browse here)
+       │                      ────────────────────►      ├── stats.html
+       │                                                 └── stats.json
+       │                      (5) Index Page
+       │                      ────────────────────►
 ```
 
 All outputs are created in a `claude-sessions` subfolder under the user-specified output directory.
 This keeps the backup isolated and avoids polluting the user's output directory with multiple files.
+The `index.html` serves as the main entry point for browsing all sessions.
 
 ### Search Flow
 

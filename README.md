@@ -53,12 +53,13 @@ claude-sessions --search -q "def \w+_handler" --mode regex
 
 ## How It Works
 
-The tool runs a four-stage pipeline:
+The tool runs a five-stage pipeline:
 
 1. **Backup**: Incrementally copies JSONL files (timestamp-based, only new/modified)
 2. **Convert**: Generates Markdown, HTML, and JSON from each session
 3. **Statistics**: Computes usage metrics and generates an HTML dashboard
 4. **Prompts**: Extracts user prompts to YAML files
+5. **Index**: Generates browsable index page with project/session navigation
 
 Core modules:
 - `claude_sessions.py` - CLI entry point
@@ -67,6 +68,7 @@ Core modules:
 - `formatters.py` - Markdown/HTML/JSON conversion
 - `stats.py` - Statistics computation and dashboard
 - `prompts.py` - User prompt extraction
+- `html_generator.py` - Shared HTML/CSS and index generation
 - `search_conversations.py` - Multi-mode search engine
 
 ## Input and Output
@@ -79,6 +81,7 @@ Claude Code stores sessions in `~/.claude/projects/<project-hash>/<session-id>.j
 
 ```
 <output>/claude-sessions/
+├── index.html                # Browsable session navigator (start here)
 ├── stats.html                # Usage statistics dashboard
 ├── stats.json                # Statistics (machine-readable)
 └── <project>/

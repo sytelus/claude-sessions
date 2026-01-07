@@ -66,6 +66,7 @@ from .formatters import FormatConverter
 from .stats import StatisticsGenerator
 from .prompts import PromptsExtractor
 from .search_conversations import ConversationSearcher
+from .html_generator import HtmlGenerator
 
 
 # Constants
@@ -154,6 +155,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
         2. Format conversion (FormatConverter)
         3. Statistics generation (StatisticsGenerator)
         4. Prompt extraction (PromptsExtractor)
+        5. Index page generation (HtmlGenerator)
 
     Progress is printed to stdout throughout the process.
 
@@ -195,7 +197,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
     prompts_ext = PromptsExtractor()
 
     # Step 1: Perform incremental backup
-    print("[1/4] Backing up session files...")
+    print("[1/5] Backing up session files...")
     backup_result = backup_mgr.backup()
 
     print(f"  - Projects found: {backup_result['projects_found']}")
@@ -205,7 +207,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
     print()
 
     # Step 2: Convert to requested formats
-    print("[2/4] Converting to output formats...")
+    print("[2/5] Converting to output formats...")
     convert_result = formatter.convert_all(output_dir, formats)
 
     print(f"  - Markdown files: {convert_result.get('markdown', 0)}")
@@ -215,7 +217,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
     print()
 
     # Step 3: Generate statistics
-    print("[3/4] Computing statistics...")
+    print("[3/5] Computing statistics...")
     stats = stats_gen.generate(output_dir)
     stats_gen.save_html(stats, output_dir / "stats.html")
     stats_gen.save_json(stats, output_dir / "stats.json")
@@ -226,11 +228,18 @@ def cmd_backup(args: argparse.Namespace) -> None:
     print()
 
     # Step 4: Extract prompts
-    print("[4/4] Extracting user prompts...")
+    print("[4/5] Extracting user prompts...")
     prompts_result = prompts_ext.extract_all(output_dir)
 
     print(f"  - Projects processed: {prompts_result['projects']}")
     print(f"  - Prompts extracted: {prompts_result['prompts']}")
+    print()
+
+    # Step 5: Generate index page
+    print("[5/5] Generating index page...")
+    html_gen = HtmlGenerator()
+    html_gen.generate_index(output_dir)
+    print(f"  - Index page: {output_dir / 'index.html'}")
     print()
 
     # Summary
@@ -238,6 +247,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
     print("BACKUP COMPLETE")
     print("=" * 60)
     print(f"Output directory: {output_dir}")
+    print(f"Browse sessions: {output_dir / 'index.html'}")
     print(f"Statistics: {output_dir / 'stats.html'}")
     print("=" * 60)
 
@@ -490,6 +500,7 @@ Search Modes:
 
 Output Structure:
   <output>/claude-sessions/
+  ├── index.html              # Browse sessions (start here)
   ├── stats.html              # Statistics dashboard
   ├── stats.json              # Statistics data
   └── <project>/
