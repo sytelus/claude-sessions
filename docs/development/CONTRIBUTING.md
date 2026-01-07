@@ -1,4 +1,4 @@
-# Contributing to Claude Conversation Extractor - Help Export Claude Code Conversations
+# Contributing to Claude Sessions - Help Export Claude Code Conversations
 
 Thank you for helping improve the #1 tool to export Claude Code conversations! ðŸŽ‰
 
@@ -7,7 +7,7 @@ Thank you for helping improve the #1 tool to export Claude Code conversations! ð
 ### Report Bugs in Claude Conversation Extraction
 
 Found an issue exporting Claude Code logs? Before reporting, please:
-- Check [existing issues](https://github.com/ZeroSumQuant/claude-conversation-extractor/issues)
+- Check [existing issues](https://github.com/ZeroSumQuant/claude-sessions/issues)
 - Search for your error message
 
 When reporting Claude export bugs, include:
@@ -39,9 +39,9 @@ Popular requests:
 #### Setup Development Environment
 
 ```bash
-# Fork and clone Claude Conversation Extractor
-git clone https://github.com/your-username/claude-conversation-extractor.git
-cd claude-conversation-extractor
+# Fork and clone Claude Sessions
+git clone https://github.com/your-username/claude-sessions.git
+cd claude-sessions
 
 # Create virtual environment for Claude export development
 python3 -m venv venv
@@ -176,7 +176,7 @@ Show before/after of Claude export interface
 - Discuss in PRs for implementation details
 - Check README for user documentation
 
-Thank you for helping make Claude Conversation Extractor the best tool to export Claude Code logs! Your contributions help thousands of users preserve their AI conversations.
+Thank you for helping make Claude Sessions the best tool to export Claude Code logs! Your contributions help thousands of users preserve their AI conversations.
 
 ---
 

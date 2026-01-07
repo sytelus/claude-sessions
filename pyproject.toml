@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claude-conversation-extractor"
+name = "claude-sessions"
 version = "1.1.2"
 description = "Export Claude Code conversations from ~/.claude/projects. Extract, search, and backup Claude chat history to markdown files."
 readme = "README.md"
@@ -32,7 +32,7 @@ classifiers = [
     "Natural Language :: English",
 ]
 keywords = [
-    "export-claude-code-conversations", "claude-conversation-extractor",
+    "export-claude-code-conversations", "claude-sessions",
     "claude-code-export-tool", "backup-claude-code-logs", "save-claude-chat-history",
     "claude-jsonl-to-markdown", "extract-claude-sessions", "claude-code-no-export-button",
     "where-are-claude-code-logs-stored", "claude-terminal-logs", "anthropic-claude-code",
@@ -43,10 +43,10 @@ requires-python = ">=3.8"
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/ZeroSumQuant/claude-conversation-extractor"
-Documentation = "https://github.com/ZeroSumQuant/claude-conversation-extractor#readme"
-Repository = "https://github.com/ZeroSumQuant/claude-conversation-extractor"
-Issues = "https://github.com/ZeroSumQuant/claude-conversation-extractor/issues"
+Homepage = "https://github.com/ZeroSumQuant/claude-sessions"
+Documentation = "https://github.com/ZeroSumQuant/claude-sessions#readme"
+Repository = "https://github.com/ZeroSumQuant/claude-sessions"
+Issues = "https://github.com/ZeroSumQuant/claude-sessions/issues"
 
 [project.scripts]
 claude-extract = "extract_claude_logs:launch_interactive"

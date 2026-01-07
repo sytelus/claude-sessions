@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Setup script for Claude Conversation Extractor"""
+"""Setup script for Claude Sessions"""
 
 import atexit
 from pathlib import Path
@@ -22,8 +22,8 @@ class PostInstallCommand(install):
             print("  claude-extract       # CLI for extraction & searching")
             print("  claude-search        # Search and view conversations")
             print("\n⭐ If you find this tool helpful, please star us on GitHub:")
-            print("   https://github.com/ZeroSumQuant/claude-conversation-extractor")
-            print("\nThank you for using Claude Conversation Extractor! 🚀\n")
+            print("   https://github.com/ZeroSumQuant/claude-sessions")
+            print("\nThank you for using Claude Sessions! 🚀\n")
 
         # Register to run after pip finishes
         atexit.register(print_success_message)
@@ -34,7 +34,7 @@ this_directory = Path(__file__).parent
 long_description = (this_directory / "README.md").read_text(encoding="utf-8")
 
 setup(
-    name="claude-conversation-extractor",
+    name="claude-sessions",
     version="1.1.2",
     author="Dustin Kirby",
     author_email="",  # Contact via GitHub
@@ -44,15 +44,15 @@ setup(
     ),
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/ZeroSumQuant/claude-conversation-extractor",
+    url="https://github.com/ZeroSumQuant/claude-sessions",
     project_urls={
         "Bug Tracker": (
-            "https://github.com/ZeroSumQuant/claude-conversation-extractor/issues"
+            "https://github.com/ZeroSumQuant/claude-sessions/issues"
         ),
         "Documentation": (
-            "https://github.com/ZeroSumQuant/claude-conversation-extractor#readme"
+            "https://github.com/ZeroSumQuant/claude-sessions#readme"
         ),
-        "Source": "https://github.com/ZeroSumQuant/claude-conversation-extractor",
+        "Source": "https://github.com/ZeroSumQuant/claude-sessions",
     },
     classifiers=[
         "Development Status :: 5 - Production/Stable",
@@ -95,7 +95,7 @@ setup(
     },
     install_requires=[],  # No dependencies!
     keywords=(
-        "export-claude-code-conversations claude-conversation-extractor "
+        "export-claude-code-conversations claude-sessions "
         "claude-code-export-tool backup-claude-code-logs save-claude-chat-history "
         "claude-jsonl-to-markdown extract-claude-sessions claude-code-no-export-button "
         "where-are-claude-code-logs-stored claude-terminal-logs anthropic-claude-code "

@@ -1,4 +1,4 @@
-# Claude Conversation Extractor - Project Context
+# Claude Sessions - Project Context
 
 ## Project Overview
 
@@ -11,13 +11,13 @@ markdown files. This is the FIRST publicly available solution for this problem.
 - **Professional Quality**: This project needs to be polished and professional -
   it's important for the developer's family
 - **Easy Installation**: Setting up PyPI publishing so users can
-  `pip install claude-conversation-extractor`
+  `pip install claude-sessions`
 - **Wide Adoption**: Make this the go-to solution for Claude Code users
 
 ## Repository Structure
 
 ```text
-claude-conversation-extractor/
+claude-sessions/
 ├── extract_claude_logs.py    # Main script
 ├── setup.py                   # PyPI packaging configuration
 ├── README.md                  # Professional documentation
@@ -41,7 +41,7 @@ claude-conversation-extractor/
 - ✅ Core functionality complete and tested
 - ✅ Professional documentation
 - ✅ Published to GitHub:
-  <https://github.com/ZeroSumQuant/claude-conversation-extractor>
+  <https://github.com/ZeroSumQuant/claude-sessions>
 - 🚧 Setting up PyPI publishing
 - 📋 TODO: Add tests, CI/CD, screenshots
 

@@ -4,13 +4,13 @@
 
 Claude Code stores all your AI programming conversations in `~/.claude/projects/` but provides **NO export button**. Your valuable AI pair programming sessions are trapped in undocumented JSONL files.
 
-**Claude Conversation Extractor** is the first and only tool that exports Claude Code conversations to clean, readable markdown files.
+**Claude Sessions** is the first and only tool that exports Claude Code conversations to clean, readable markdown files.
 
 ## 🚀 Export Claude Code in 30 Seconds
 
 ```bash
 # Install the Claude export tool
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 
 # Export your Claude conversations
 claude-logs
@@ -94,28 +94,28 @@ claude-logs --all
 # macOS
 brew install pipx
 pipx ensurepath
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 
 # Windows
 py -m pip install --user pipx
 py -m pipx ensurepath
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 
 # Linux
 sudo apt install pipx  # or dnf, pacman, etc.
 pipx ensurepath
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 ```
 
 ### Alternative: Install with pip
 ```bash
-pip install claude-conversation-extractor
+pip install claude-sessions
 ```
 
 ## Frequently Asked Questions
 
 ### Q: How do I export Claude Code conversations?
-A: Install our tool with `pipx install claude-conversation-extractor` then run `claude-logs`. It automatically finds and exports your conversations.
+A: Install our tool with `pipx install claude-sessions` then run `claude-logs`. It automatically finds and exports your conversations.
 
 ### Q: Where does Claude Code store conversations?
 A: Claude Code saves chats in `~/.claude/projects/` as JSONL files. There's no built-in way to export them - that's why this tool exists.
@@ -142,14 +142,14 @@ A: No, this is an independent open-source tool. It reads the local Claude Code f
 Don't risk losing your Claude Code conversations. Install the extractor today:
 
 ```bash
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 claude-logs
 ```
 
 **Links:**
-- [GitHub Repository](https://github.com/ZeroSumQuant/claude-conversation-extractor)
-- [PyPI Package](https://pypi.org/project/claude-conversation-extractor/)
-- [Report Issues](https://github.com/ZeroSumQuant/claude-conversation-extractor/issues)
+- [GitHub Repository](https://github.com/ZeroSumQuant/claude-sessions)
+- [PyPI Package](https://pypi.org/project/claude-sessions/)
+- [Report Issues](https://github.com/ZeroSumQuant/claude-sessions/issues)
 
 ---
 

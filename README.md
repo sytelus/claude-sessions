@@ -1,4 +1,4 @@
-# Claude Conversation Extractor - Export Claude Code Conversations to Markdown | Save Chat History
+# Claude Sessions - Export Claude Code Conversations to Markdown | Save Chat History
 
 > 🚀 **The ONLY tool to export Claude Code conversations**. Extract Claude chat history from ~/.claude/projects, search through logs, and backup your AI programming sessions.
 
@@ -9,11 +9,11 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![PyPI version](https://badge.fury.io/py/claude-conversation-extractor.svg)](https://badge.fury.io/py/claude-conversation-extractor)
-[![Downloads](https://pepy.tech/badge/claude-conversation-extractor)](https://pepy.tech/project/claude-conversation-extractor)
-[![GitHub stars](https://img.shields.io/github/stars/ZeroSumQuant/claude-conversation-extractor?style=social)](https://github.com/ZeroSumQuant/claude-conversation-extractor)
-[![Export Claude Code](https://img.shields.io/badge/Export-Claude%20Code%20Conversations-blue)](https://github.com/ZeroSumQuant/claude-conversation-extractor)
-[![Claude Code Logs](https://img.shields.io/badge/Backup-Claude%20Code%20Logs-green)](https://github.com/ZeroSumQuant/claude-conversation-extractor)
+[![PyPI version](https://badge.fury.io/py/claude-sessions.svg)](https://badge.fury.io/py/claude-sessions)
+[![Downloads](https://pepy.tech/badge/claude-sessions)](https://pepy.tech/project/claude-sessions)
+[![GitHub stars](https://img.shields.io/github/stars/ZeroSumQuant/claude-sessions?style=social)](https://github.com/ZeroSumQuant/claude-sessions)
+[![Export Claude Code](https://img.shields.io/badge/Export-Claude%20Code%20Conversations-blue)](https://github.com/ZeroSumQuant/claude-sessions)
+[![Claude Code Logs](https://img.shields.io/badge/Backup-Claude%20Code%20Logs-green)](https://github.com/ZeroSumQuant/claude-sessions)
 
 **Export Claude Code conversations with the #1 extraction tool.** Claude Code stores chats in ~/.claude/projects as JSONL files with no export button - this tool solves that.
 
@@ -21,7 +21,7 @@
 
 ## 📸 How to Export Claude Code Conversations - Demo
 
-![Export Claude Code conversations demo - Claude Conversation Extractor in action](https://raw.githubusercontent.com/ZeroSumQuant/claude-conversation-extractor/main/assets/demo.gif)
+![Export Claude Code conversations demo - Claude Sessions in action](https://raw.githubusercontent.com/ZeroSumQuant/claude-sessions/main/assets/demo.gif)
 
 ## 🎯 Can't Export Claude Code Conversations? We Solved It.
 
@@ -31,7 +31,7 @@
 - ❌ **Backup Claude Code logs** for documentation or sharing
 - ❌ **Convert Claude JSONL to Markdown** for readable archives
 
-## ✅ Claude Conversation Extractor: The First Export Tool for Claude Code
+## ✅ Claude Sessions: The First Export Tool for Claude Code
 
 This is the **ONLY tool that exports Claude Code conversations**:
 - ✅ **Finds Claude Code logs** automatically in ~/.claude/projects
@@ -51,16 +51,16 @@ This is the **ONLY tool that exports Claude Code conversations**:
 - **🖥️ Cross-Platform**: Export Claude Code logs on any OS
 - **📊 97% Test Coverage**: Reliable extraction you can trust
 
-## 📦 Install Claude Conversation Extractor
+## 📦 Install Claude Sessions
 
 ### Quick Install (Recommended)
 
 ```bash
 # Using pipx (solves Python environment issues)
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 
 # OR using pip
-pip install claude-conversation-extractor
+pip install claude-sessions
 ```
 
 ### Platform-Specific Setup
@@ -74,7 +74,7 @@ brew install pipx
 pipx ensurepath
 
 # Then install the extractor
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 ```
 </details>
 
@@ -88,7 +88,7 @@ py -m pipx ensurepath
 # Restart terminal, then:
 
 # Install the extractor
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 ```
 </details>
 
@@ -101,7 +101,7 @@ sudo apt install pipx
 pipx ensurepath
 
 # Install the extractor
-pipx install claude-conversation-extractor
+pipx install claude-sessions
 ```
 </details>
 
@@ -223,7 +223,7 @@ claude-extract
 ## ❓ Frequently Asked Questions
 
 ### How do I export Claude Code conversations?
-Install with `pipx install claude-conversation-extractor` then run `claude-extract`. The tool automatically finds all conversations in ~/.claude/projects.
+Install with `pipx install claude-sessions` then run `claude-extract`. The tool automatically finds all conversations in ~/.claude/projects.
 
 ### How do I export the detailed transcript with tool use?
 Use the `--detailed` flag to include tool invocations, MCP responses, terminal outputs, and system messages:
@@ -256,7 +256,7 @@ No, this is an independent open-source tool. It reads the local Claude Code file
 
 ## 📊 Why This is the Best Claude Code Export Tool
 
-| Feature | Claude Conversation Extractor | Manual Copy | Claude.ai Export |
+| Feature | Claude Sessions | Manual Copy | Claude.ai Export |
 |---------|------------------------------|-------------|------------------|
 | Works with Claude Code | ✅ Full support | ✅ Tedious | ❌ Different product |
 | Bulk export | ✅ All conversations | ❌ One at a time | ❌ N/A |
@@ -267,7 +267,7 @@ No, this is an independent open-source tool. It reads the local Claude Code file
 
 ## 🔧 Technical Details
 
-### How Claude Conversation Extractor Works
+### How Claude Sessions Works
 
 1. **Locates Claude Code logs**: Scans ~/.claude/projects for JSONL files
 2. **Parses undocumented format**: Handles Claude's internal data structure
@@ -294,8 +294,8 @@ Help make the best Claude Code export tool even better! See [CONTRIBUTING.md](do
 ### Development Setup
 ```bash
 # Clone the repo
-git clone https://github.com/ZeroSumQuant/claude-conversation-extractor.git
-cd claude-conversation-extractor
+git clone https://github.com/ZeroSumQuant/claude-sessions.git
+cd claude-sessions
 
 # Create virtual environment
 python3 -m venv venv
