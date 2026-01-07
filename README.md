@@ -23,8 +23,8 @@ python -m spacy download en_core_web_sm
 ## Usage
 
 ```bash
-# Backup all sessions (set OUTPUT_DIR or use --output)
-export OUTPUT_DIR=~/claude-backup
+# Backup all sessions (set OUT_DIR or use --output)
+export OUT_DIR=~/claude-backup
 claude-sessions
 
 # List projects and backup status
@@ -43,7 +43,7 @@ claude-sessions --search -q "def \w+_handler" --mode regex
 | `--list` | Show projects and backup status | |
 | `--search` | Search conversation content | |
 | `--input` | Source directory | `~/.claude/projects/` |
-| `--output` | Destination directory | `$OUTPUT_DIR` |
+| `--output` | Destination directory | `$OUT_DIR` |
 | `--format` | Output formats (comma-separated) | `markdown,html,data` |
 | `-q, --query` | Search query string | |
 | `-m, --mode` | Search mode: `smart`, `exact`, `regex`, `semantic` | `smart` |

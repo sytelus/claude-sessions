@@ -359,9 +359,9 @@ class SearchConfig:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `OUTPUT_DIR` | Base output directory for backups | (none, prompts user) |
+| `OUT_DIR` | Base output directory for backups | (none, prompts user) |
 
-Note: The actual backup is created in `$OUTPUT_DIR/claude-sessions/`, not directly in `$OUTPUT_DIR`.
+Note: The actual backup is created in `$OUT_DIR/claude-sessions/`, not directly in `$OUT_DIR`.
 
 ### Skip Directories
 

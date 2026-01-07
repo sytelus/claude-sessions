@@ -21,7 +21,7 @@ Claude Sessions is a backup and analysis tool for Claude Code conversation sessi
 
 #### `--output <path>`
 - Specifies the output folder for backups
-- Default: Value from `OUTPUT_DIR` environment variable
+- Default: Value from `OUT_DIR` environment variable
 - If not set and not provided: prompt user interactively
 
 #### `--input <path>`
@@ -193,7 +193,7 @@ Claude Sessions is a backup and analysis tool for Claude Code conversation sessi
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OUTPUT_DIR` | Default output directory for backups | None (prompt if not set) |
+| `OUT_DIR` | Default output directory for backups | None (prompt if not set) |
 
 ---
 

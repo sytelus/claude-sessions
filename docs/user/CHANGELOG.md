@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking Changes
 - **New primary command**: `claude-sessions` is now the main entry point
-- Output directory now required via `--output` or `OUTPUT_DIR` environment variable
+- Output directory now required via `--output` or `OUT_DIR` environment variable
 - Output structure changed to include format subdirectories (markdown/, html/, data/)
 
 ### Added
@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Prompts extraction**: Creates `prompts.yaml` in each project with user prompts
 - **Structured data format**: New `data/` folder with full JSON export preserving all metadata
 - **Timestamp preservation**: Backed up files maintain original modification times
-- **`OUTPUT_DIR` environment variable**: Set default output directory
+- **`OUT_DIR` environment variable**: Set default output directory
 
 ### Changed
 - Simplified CLI with single `claude-sessions` command

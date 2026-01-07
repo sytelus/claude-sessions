@@ -18,7 +18,7 @@ Backup Pipeline:
 
 Configuration:
     - Input directory: Default ~/.claude/projects (where Claude Code stores logs)
-    - Output directory: Via --output flag or OUTPUT_DIR environment variable
+    - Output directory: Via --output flag or OUT_DIR environment variable
     - Formats: Customizable via --format flag (markdown,html,data)
 
 For architecture details and data flows, see:
@@ -72,7 +72,7 @@ from html_generator import HtmlGenerator
 # Constants
 DEFAULT_INPUT_DIR = Path.home() / ".claude" / "projects"
 DEFAULT_FORMATS = "markdown,html,data"
-ENV_OUTPUT_DIR = "OUTPUT_DIR"
+ENV_OUTPUT_DIR = "OUT_DIR"
 OUTPUT_SUBFOLDER = "claude-sessions"
 
 
@@ -82,7 +82,7 @@ def get_output_dir(args_output: Optional[str]) -> Path:
 
     Resolution priority:
         1. Command line --output argument
-        2. OUTPUT_DIR environment variable
+        2. OUT_DIR environment variable
         3. Interactive user prompt
 
     Args:
@@ -490,7 +490,7 @@ Examples:
   claude-sessions --search --mode regex -q "import\\s+\\w+"  # Regex search
 
 Environment Variables:
-  OUTPUT_DIR    Default output directory for backups
+  OUT_DIR       Default output directory for backups
 
 Search Modes:
   smart     Combines exact matching, token overlap, and proximity (default)
