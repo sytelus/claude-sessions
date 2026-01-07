@@ -26,8 +26,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .parser import SessionParser
-from .utils import iter_project_dirs, extract_text
+from parser import SessionParser
+from utils import iter_project_dirs, extract_text
 
 # Cost per 1M tokens (approximate, using Claude 3.5 Sonnet pricing as baseline)
 # These are rough estimates - actual costs vary by model

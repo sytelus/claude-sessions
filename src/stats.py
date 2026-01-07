@@ -53,9 +53,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .parser import SessionParser, ParsedMessage
-from .utils import iter_project_dirs
-from .html_generator import generate_stats_html
+from parser import SessionParser, ParsedMessage
+from utils import iter_project_dirs
+from html_generator import generate_stats_html
 
 
 class StatisticsGenerator:

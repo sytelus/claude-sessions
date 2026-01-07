@@ -53,8 +53,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .parser import SessionParser
-from .utils import iter_project_dirs
+from parser import SessionParser
+from utils import iter_project_dirs
 
 try:
     import yaml

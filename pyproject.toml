@@ -65,7 +65,8 @@ py-modules = [
     "prompts",
     "parser",
     "utils",
-    "search_conversations"
+    "search_conversations",
+    "html_generator"
 ]
 
 [tool.setuptools.package-dir]

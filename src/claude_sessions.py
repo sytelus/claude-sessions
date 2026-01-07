@@ -61,12 +61,12 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from .backup import BackupManager
-from .formatters import FormatConverter
-from .stats import StatisticsGenerator
-from .prompts import PromptsExtractor
-from .search_conversations import ConversationSearcher
-from .html_generator import HtmlGenerator
+from backup import BackupManager
+from formatters import FormatConverter
+from stats import StatisticsGenerator
+from prompts import PromptsExtractor
+from search_conversations import ConversationSearcher
+from html_generator import HtmlGenerator
 
 
 # Constants

@@ -36,7 +36,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .utils import extract_text, parse_timestamp
+from utils import extract_text, parse_timestamp
 
 
 @dataclass

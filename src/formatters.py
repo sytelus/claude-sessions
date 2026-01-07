@@ -50,9 +50,9 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .parser import SessionParser
-from .utils import iter_project_dirs, parse_timestamp
-from .html_generator import SHARED_CSS
+from parser import SessionParser
+from utils import iter_project_dirs, parse_timestamp
+from html_generator import SHARED_CSS
 
 
 # Constants

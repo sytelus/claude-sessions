@@ -62,7 +62,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Union
 
-from .utils import extract_text, parse_timestamp
+from utils import extract_text, parse_timestamp
 
 # Optional NLP imports for semantic search
 try:
