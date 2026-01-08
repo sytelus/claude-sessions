@@ -930,12 +930,12 @@ details.tool-details pre { margin-top: 8px; font-size: 0.75em; max-height: 200px
 <body>
     <nav class="nav">
         <div class="nav-content">
-            <div class="nav-brand">
+            <a href="../../index.html" class="nav-brand">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
                 Claude Sessions
-            </div>
+            </a>
             <div class="nav-links">
                 <a href="../../index.html">Browse</a>
                 <a href="../../stats.html">Statistics</a>
@@ -1087,6 +1087,65 @@ details.tool-details pre { margin-top: 8px; font-size: 0.75em; max-height: 200px
 
                         f.write('                </div>\n')
                         f.write('            </div>\n')
+
+                    elif group_items:
+                        # Collected some items but not enough for a group (< 2)
+                        # Render each item individually
+                        for item in group_items:
+                            item_type = item.get("type")
+                            if item_type == "assistant":
+                                thinking = item.get("thinking")
+                                tool_calls = item.get("tool_calls")
+                                content = item.get("content", "")
+
+                                if not content and not thinking and not tool_calls:
+                                    continue
+
+                                msg_counter += 1
+                                msg_id = f"msg-{msg_counter}"
+                                f.write(f'            <div class="message assistant" id="{msg_id}">\n')
+                                f.write(f'                <div class="role role-assistant">Claude <a href="#{msg_id}" class="message-anchor">#</a></div>\n')
+
+                                if thinking:
+                                    f.write('                <details class="thinking">\n')
+                                    f.write('                    <summary>Thinking</summary>\n')
+                                    f.write(f'                    <div>{html.escape(thinking[:3000])}{"..." if len(thinking) > 3000 else ""}</div>\n')
+                                    f.write('                </details>\n')
+
+                                if content:
+                                    rendered = markdown_to_html(content)
+                                    f.write(f'                <div class="content">{rendered}</div>\n')
+
+                                if tool_calls:
+                                    for tc in tool_calls:
+                                        tool_name = html.escape(tc.get("name", "unknown"))
+                                        f.write(f'                <div class="tool-call"><strong>{tool_name}</strong></div>\n')
+
+                                f.write('            </div>\n')
+
+                            elif item_type == "tool_use":
+                                msg_counter += 1
+                                msg_id = f"msg-{msg_counter}"
+                                tool_name = html.escape(item.get("tool_name", "unknown"))
+                                tool_input = item.get("tool_input", {})
+                                detail = _get_tool_detail(tool_name, tool_input)
+                                f.write(f'            <div class="message tool" id="{msg_id}">\n')
+                                f.write(f'                <div class="role role-tool">Tool: {tool_name} <a href="#{msg_id}" class="message-anchor">#</a></div>\n')
+                                f.write(f'                <div class="content" style="font-family:monospace;font-size:0.85em">{html.escape(detail)}</div>\n')
+                                f.write('            </div>\n')
+
+                            elif item_type == "tool_result":
+                                # Render tool results too
+                                msg_counter += 1
+                                msg_id = f"msg-{msg_counter}"
+                                output = item.get("output", "")
+                                is_error = item.get("is_error", False)
+                                f.write(f'            <div class="message tool" id="{msg_id}">\n')
+                                f.write(f'                <div class="role role-tool">Tool Result {"(Error)" if is_error else ""}<a href="#{msg_id}" class="message-anchor">#</a></div>\n')
+                                if output:
+                                    truncated = output[:500] + ("..." if len(output) > 500 else "")
+                                    f.write(f'                <div class="content" style="font-family:monospace;font-size:0.85em">{html.escape(truncated)}</div>\n')
+                                f.write('            </div>\n')
 
                     elif i == start_i:
                         # No grouping happened, render the single message

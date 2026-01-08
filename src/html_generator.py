@@ -331,6 +331,17 @@ a:hover { color: var(--primary-dark); text-decoration: underline; }
     transition: background 0.2s;
 }
 .project-row-header:hover { background: var(--bg-alt); }
+.project-row { scroll-margin-top: 80px; }
+.project-row-anchor {
+    color: var(--muted);
+    text-decoration: none;
+    opacity: 0;
+    margin-left: 8px;
+    font-size: 0.8em;
+    transition: opacity 0.2s;
+}
+.project-row-header:hover .project-row-anchor { opacity: 0.5; }
+.project-row-anchor:hover { opacity: 1 !important; color: var(--primary); }
 .project-row-expand {
     width: 24px;
     height: 24px;
@@ -1231,12 +1242,12 @@ class HtmlGenerator:
 <body>
     <nav class="nav">
         <div class="nav-content">
-            <div class="nav-brand">
+            <a href="index.html" class="nav-brand">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
                 Claude Sessions
-            </div>
+            </a>
             <div class="nav-links">
                 <a href="index.html" class="active">Browse</a>
                 <a href="stats.html">Statistics</a>
@@ -1362,7 +1373,7 @@ class HtmlGenerator:
                     <div class="project-row-header" onclick="toggleProjectRow('{project_hash}')">
                         <div class="project-row-expand">▶</div>
                         <div class="project-row-info">
-                            <div class="project-row-name" title="{html.escape(full_path)}">{html.escape(display_name)}</div>
+                            <div class="project-row-name" title="{html.escape(full_path)}">{html.escape(display_name)} <a href="#project-{project_hash}" class="project-row-anchor" onclick="event.stopPropagation()">#</a></div>
                             <div class="project-row-path">{html.escape(full_path)}</div>
                         </div>
                         <div class="project-row-stats">
@@ -1797,12 +1808,12 @@ def generate_stats_html(stats: Dict[str, Any], output_path: Path) -> None:
 <body>
     <nav class="nav">
         <div class="nav-content">
-            <div class="nav-brand">
+            <a href="index.html" class="nav-brand">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
                 Claude Sessions
-            </div>
+            </a>
             <div class="nav-links">
                 <a href="index.html">Browse</a>
                 <a href="stats.html" class="active">Statistics</a>
