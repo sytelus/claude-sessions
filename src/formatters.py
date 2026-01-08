@@ -64,7 +64,8 @@ def markdown_to_html(text: str) -> str:
     """
     Convert markdown text to HTML.
 
-    Supports code blocks, inline code, bold, italic, headers, links, blockquotes.
+    Supports code blocks, inline code, bold, italic, headers, links, blockquotes,
+    unordered lists, ordered lists, and tables.
     """
     if not text:
         return ""
@@ -80,6 +81,23 @@ def markdown_to_html(text: str) -> str:
         return f"%%CODE_BLOCK_{idx}%%"
 
     result = re.sub(r"```(\w*)\n?([\s\S]*?)```", save_code_block, text)
+
+    # Preserve tables with placeholders (before HTML escaping)
+    tables = []
+
+    def save_table(match):
+        table_text = match.group(0)
+        idx = len(tables)
+        tables.append(table_text)
+        return f"%%TABLE_{idx}%%"
+
+    # Match markdown tables: header row, separator row, and data rows
+    result = re.sub(
+        r'^\|[^\n]+\|\n\|[-:\| ]+\|\n(?:\|[^\n]+\|\n?)+',
+        save_table,
+        result,
+        flags=re.MULTILINE
+    )
 
     # Escape HTML
     result = html.escape(result)
@@ -102,6 +120,19 @@ def markdown_to_html(text: str) -> str:
     # Blockquotes
     result = re.sub(r"^&gt; (.+)$", r"<blockquote>\1</blockquote>", result, flags=re.MULTILINE)
 
+    # Unordered lists (lines starting with - or *)
+    result = re.sub(r"^[\-\*] (.+)$", r"<li>\1</li>", result, flags=re.MULTILINE)
+    # Wrap consecutive <li> items in <ul>
+    result = re.sub(r"((?:<li>.*?</li>\n?)+)", r"<ul>\1</ul>", result)
+
+    # Ordered lists (lines starting with number.)
+    result = re.sub(r"^\d+\. (.+)$", r"<li>\1</li>", result, flags=re.MULTILINE)
+
+    # Restore tables as HTML
+    for idx, table_text in enumerate(tables):
+        html_table = _convert_markdown_table(table_text)
+        result = result.replace(f"%%TABLE_{idx}%%", html_table)
+
     # Restore code blocks with syntax highlighting
     for idx, (lang, code) in enumerate(code_blocks):
         lang_class = f' class="language-{lang}"' if lang else ""
@@ -112,6 +143,62 @@ def markdown_to_html(text: str) -> str:
         result = result.replace(f"%%CODE_BLOCK_{idx}%%", replacement)
 
     return result
+
+
+def _convert_markdown_table(table_text: str) -> str:
+    """
+    Convert a markdown table to HTML table.
+
+    Args:
+        table_text: Raw markdown table text
+
+    Returns:
+        HTML table string
+    """
+    lines = table_text.strip().split('\n')
+    if len(lines) < 2:
+        return html.escape(table_text)
+
+    # Parse header row
+    header_cells = [cell.strip() for cell in lines[0].strip('|').split('|')]
+
+    # Parse alignment from separator row
+    separator = lines[1]
+    alignments = []
+    for cell in separator.strip('|').split('|'):
+        cell = cell.strip()
+        if cell.startswith(':') and cell.endswith(':'):
+            alignments.append('center')
+        elif cell.endswith(':'):
+            alignments.append('right')
+        else:
+            alignments.append('left')
+
+    # Build HTML table
+    html_parts = ['<table class="md-table">']
+
+    # Header
+    html_parts.append('<thead><tr>')
+    for i, cell in enumerate(header_cells):
+        align = alignments[i] if i < len(alignments) else 'left'
+        html_parts.append(f'<th style="text-align:{align}">{html.escape(cell)}</th>')
+    html_parts.append('</tr></thead>')
+
+    # Body rows
+    html_parts.append('<tbody>')
+    for line in lines[2:]:
+        if not line.strip():
+            continue
+        cells = [cell.strip() for cell in line.strip('|').split('|')]
+        html_parts.append('<tr>')
+        for i, cell in enumerate(cells):
+            align = alignments[i] if i < len(alignments) else 'left'
+            html_parts.append(f'<td style="text-align:{align}">{html.escape(cell)}</td>')
+        html_parts.append('</tr>')
+    html_parts.append('</tbody>')
+
+    html_parts.append('</table>')
+    return ''.join(html_parts)
 
 
 def syntax_highlight(code: str, lang: str) -> str:
@@ -195,6 +282,76 @@ def format_duration_human(minutes: Optional[float]) -> str:
         return f"{hours:.1f} hrs"
     days = minutes / 1440
     return f"{days:.1f} days"
+
+
+def _is_lightweight_assistant_msg(msg: Dict[str, Any]) -> bool:
+    """
+    Check if an assistant message is "lightweight" and should be grouped.
+
+    A lightweight message has one of:
+    - Only thinking (no content or tool calls)
+    - Only tool calls (no content)
+    - Very short content (<100 chars) that looks like a transition phrase
+
+    Args:
+        msg: Assistant message dictionary
+
+    Returns:
+        True if message should be grouped with neighbors
+    """
+    if msg.get("type") != "assistant":
+        return False
+
+    content = msg.get("content", "").strip()
+    thinking = msg.get("thinking")
+    tool_calls = msg.get("tool_calls")
+
+    # Only thinking block
+    if thinking and not content and not tool_calls:
+        return True
+
+    # Only tool calls
+    if tool_calls and not content:
+        return True
+
+    # Short transitional content
+    if len(content) < 100 and not thinking:
+        # Check for common transitional phrases
+        transitional = [
+            "let me", "i'll", "i will", "now", "next",
+            "looking at", "checking", "reading", "searching",
+            "the file", "here's", "here is", "done"
+        ]
+        content_lower = content.lower()
+        if any(phrase in content_lower for phrase in transitional):
+            return True
+
+    return False
+
+
+def _get_tool_detail(tool_name: str, tool_input: Dict[str, Any]) -> str:
+    """
+    Extract a brief description of what a tool is doing.
+
+    Args:
+        tool_name: Name of the tool
+        tool_input: Tool input parameters
+
+    Returns:
+        Short description string
+    """
+    if tool_name in ("Read", "Edit", "Write"):
+        return tool_input.get("file_path", "")[:50]
+    elif tool_name == "Bash":
+        return tool_input.get("command", "")[:60]
+    elif tool_name == "Grep":
+        return f"pattern: {tool_input.get('pattern', '')[:30]}"
+    elif tool_name == "Glob":
+        return tool_input.get("pattern", "")[:40]
+    elif tool_name == "Task":
+        return tool_input.get("description", "")[:40]
+    else:
+        return str(tool_input)[:50]
 
 
 class FormatConverter:
@@ -631,6 +788,128 @@ code {
 details.tool-details { margin-top: 8px; }
 details.tool-details summary { cursor: pointer; font-size: 0.75rem; color: var(--muted); }
 details.tool-details pre { margin-top: 8px; font-size: 0.75em; max-height: 200px; overflow-y: auto; }
+/* Markdown tables */
+.md-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.9em;
+}
+.md-table th, .md-table td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+}
+.md-table th {
+    background: var(--bg-alt);
+    font-weight: 600;
+}
+.md-table tr:nth-child(even) {
+    background: var(--bg-alt);
+}
+[data-theme="dark"] .md-table th {
+    background: #2d2d2d;
+}
+[data-theme="dark"] .md-table tr:nth-child(even) {
+    background: #1e1e1e;
+}
+/* Message anchors and links */
+.message { scroll-margin-top: 80px; }
+.message-anchor {
+    color: var(--muted);
+    text-decoration: none;
+    opacity: 0;
+    margin-left: 8px;
+    font-size: 0.8em;
+    transition: opacity 0.2s;
+}
+.message:hover .message-anchor { opacity: 0.5; }
+.message-anchor:hover { opacity: 1 !important; color: var(--primary); }
+/* Grouped assistant messages */
+.message-group {
+    background: var(--card);
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    border-left: 4px solid var(--assistant-color);
+}
+.message-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+[data-theme="dark"] .message-group-header {
+    background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+}
+.message-group-header:hover { filter: brightness(0.98); }
+.message-group-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--assistant-color);
+    color: white;
+}
+.message-group-expand {
+    margin-left: auto;
+    font-size: 0.8rem;
+    color: var(--muted);
+    transition: transform 0.2s;
+}
+.message-group.expanded .message-group-expand { transform: rotate(90deg); }
+.message-group-content {
+    display: none;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+}
+.message-group.expanded .message-group-content { display: block; }
+.grouped-item {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+.grouped-item:last-child { border-bottom: none; }
+.grouped-item-label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+.grouped-thinking {
+    font-size: 0.85em;
+    color: #6b21a8;
+    background: #f5f3ff;
+    padding: 8px;
+    border-radius: 4px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+[data-theme="dark"] .grouped-thinking {
+    background: #2e1065;
+    color: #c4b5fd;
+}
+.grouped-content {
+    font-size: 0.9em;
+    color: var(--text);
+}
+.grouped-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.grouped-tool-chip {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #f59e0b;
+}
+[data-theme="dark"] .grouped-tool-chip {
+    background: #451a03;
+    color: #fde68a;
+    border-color: #b45309;
+}
 .timestamp {
     font-size: 0.7rem;
     color: var(--muted);
@@ -687,132 +966,178 @@ details.tool-details pre { margin-top: 8px; font-size: 0.75em; max-height: 200px
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html_content)
 
-            # Group consecutive tool messages
+            msg_counter = 0  # For generating unique message IDs
+            group_counter = 0  # For generating unique group IDs
             i = 0
+
             while i < len(messages):
                 msg = messages[i]
                 msg_type = msg.get("type")
 
+                # User message - always its own card with anchor
                 if msg_type == "user":
+                    msg_counter += 1
+                    msg_id = f"msg-{msg_counter}"
                     content = markdown_to_html(msg.get("content", ""))
-                    f.write('            <div class="message user">\n')
-                    f.write('                <div class="role role-user">User</div>\n')
+                    f.write(f'            <div class="message user" id="{msg_id}">\n')
+                    f.write(f'                <div class="role role-user">User <a href="#{msg_id}" class="message-anchor">#</a></div>\n')
                     f.write(f'                <div class="content">{content}</div>\n')
                     f.write('            </div>\n')
                     i += 1
 
-                elif msg_type == "assistant":
-                    thinking = msg.get("thinking")
-                    tool_calls = msg.get("tool_calls")
-                    content = msg.get("content", "")
-                    if not content and not thinking and not tool_calls:
-                        i += 1
-                        continue
+                # Check if we should group consecutive lightweight messages
+                elif msg_type == "assistant" or msg_type in ["tool_use", "tool_result"]:
+                    # Collect consecutive groupable items
+                    group_items = []
+                    start_i = i
 
-                    f.write('            <div class="message assistant">\n')
-                    f.write('                <div class="role role-assistant">Claude</div>\n')
+                    while i < len(messages):
+                        curr = messages[i]
+                        curr_type = curr.get("type")
 
-                    if thinking:
-                        f.write('                <details class="thinking">\n')
-                        f.write('                    <summary>Thinking</summary>\n')
-                        f.write(f'                    <div>{html.escape(thinking[:3000])}{"..." if len(thinking) > 3000 else ""}</div>\n')
-                        f.write('                </details>\n')
+                        if curr_type == "user":
+                            break  # User message ends the group
 
-                    if content:
-                        rendered = markdown_to_html(content)
-                        f.write(f'                <div class="content">{rendered}</div>\n')
-
-                    if tool_calls:
-                        for tc in tool_calls:
-                            tool_name = html.escape(tc.get("name", "unknown"))
-                            f.write(f'                <div class="tool-call"><strong>{tool_name}</strong></div>\n')
-
-                    f.write('            </div>\n')
-                    i += 1
-
-                elif msg_type in ["tool_use", "tool_result"]:
-                    # Collect consecutive tool messages into a group
-                    tool_group = []
-                    while i < len(messages) and messages[i].get("type") in ["tool_use", "tool_result"]:
-                        tool_group.append(messages[i])
-                        i += 1
-
-                    # Render tool group compactly
-                    if len(tool_group) > 0:
-                        f.write('            <div class="message tool tool-group">\n')
-                        f.write('                <div class="tool-group-header">\n')
-                        f.write('                    <span class="role role-tool">Tools</span>\n')
-                        f.write(f'                    <span class="tool-group-badge">{len(tool_group)} operations</span>\n')
-                        f.write('                </div>\n')
-
-                        # Group tool_use with its following tool_result
-                        j = 0
-                        while j < len(tool_group):
-                            tm = tool_group[j]
-                            if tm.get("type") == "tool_use":
-                                tool_name = html.escape(tm.get("tool_name", "unknown"))
-                                tool_input = tm.get("tool_input", {})
-
-                                # Get brief description of what the tool is doing
-                                detail = ""
-                                if tool_name == "Read":
-                                    detail = tool_input.get("file_path", "")[:50]
-                                elif tool_name == "Edit":
-                                    detail = tool_input.get("file_path", "")[:50]
-                                elif tool_name == "Write":
-                                    detail = tool_input.get("file_path", "")[:50]
-                                elif tool_name == "Bash":
-                                    detail = tool_input.get("command", "")[:60]
-                                elif tool_name == "Grep":
-                                    detail = f"pattern: {tool_input.get('pattern', '')[:30]}"
-                                elif tool_name == "Glob":
-                                    detail = tool_input.get("pattern", "")[:40]
+                        if curr_type == "assistant":
+                            if _is_lightweight_assistant_msg(curr):
+                                group_items.append(curr)
+                                i += 1
+                            else:
+                                # Substantial assistant message
+                                if group_items:
+                                    break  # End group before this message
                                 else:
-                                    # Generic detail
-                                    detail = str(tool_input)[:50]
+                                    # Render as standalone
+                                    break
 
-                                # Check if next message is the result
-                                status = ""
-                                if j + 1 < len(tool_group) and tool_group[j + 1].get("type") == "tool_result":
-                                    result = tool_group[j + 1]
-                                    if result.get("error"):
-                                        status = '<span class="tool-item-status error">✗</span>'
-                                    else:
-                                        status = '<span class="tool-item-status success">✓</span>'
+                        elif curr_type in ["tool_use", "tool_result"]:
+                            group_items.append(curr)
+                            i += 1
 
-                                f.write(f'                <div class="tool-item">\n')
-                                f.write(f'                    <span class="tool-item-name">{tool_name}</span>\n')
-                                f.write(f'                    <span class="tool-item-detail" title="{html.escape(str(tool_input)[:200])}">{html.escape(detail)}</span>\n')
-                                f.write(f'                    {status}\n')
-                                f.write(f'                </div>\n')
+                        else:
+                            i += 1  # Skip unknown types
 
-                            j += 1
+                    # If we collected a group, render it
+                    if len(group_items) >= 2:
+                        group_counter += 1
+                        group_id = f"group-{group_counter}"
+                        msg_counter += 1
+                        msg_id = f"msg-{msg_counter}"
 
-                        # Add collapsible details for full output
-                        f.write('                <details class="tool-details">\n')
-                        f.write('                    <summary>Show full tool details</summary>\n')
-                        for tm in tool_group:
-                            if tm.get("type") == "tool_use":
-                                tool_name = html.escape(tm.get("tool_name", "unknown"))
-                                tool_input = json.dumps(tm.get("tool_input", {}), indent=2, ensure_ascii=False)
-                                f.write(f'                    <strong>{tool_name}</strong>\n')
-                                f.write(f'                    <pre>{html.escape(tool_input)}</pre>\n')
-                            elif tm.get("type") == "tool_result":
-                                output = tm.get("output", "")[:2000]
-                                error = tm.get("error")
-                                if error:
-                                    f.write(f'                    <pre class="error" style="background:#fef2f2;color:#b91c1c;">Error: {html.escape(str(error))}</pre>\n')
-                                elif output:
-                                    # Check if this is diff content
-                                    if is_diff_content(output):
-                                        rendered = render_diff(output)
-                                        f.write(f'                    <pre>{rendered}</pre>\n')
-                                    else:
-                                        f.write(f'                    <pre>{html.escape(output)}</pre>\n')
-                        f.write('                </details>\n')
+                        # Count items in group
+                        thinking_count = sum(1 for g in group_items if g.get("type") == "assistant" and g.get("thinking"))
+                        tool_count = sum(1 for g in group_items if g.get("type") == "tool_use")
+                        text_count = sum(1 for g in group_items if g.get("type") == "assistant" and g.get("content", "").strip())
+
+                        summary_parts = []
+                        if thinking_count:
+                            summary_parts.append(f"{thinking_count} thinking")
+                        if tool_count:
+                            summary_parts.append(f"{tool_count} tools")
+                        if text_count:
+                            summary_parts.append(f"{text_count} responses")
+                        summary = ", ".join(summary_parts) or "Claude activity"
+
+                        f.write(f'            <div class="message-group" id="{group_id}">\n')
+                        f.write(f'                <div class="message-group-header" onclick="toggleMessageGroup(\'{group_id}\')">\n')
+                        f.write(f'                    <span class="role role-assistant">Claude <a href="#{msg_id}" class="message-anchor" onclick="event.stopPropagation()">#</a></span>\n')
+                        f.write(f'                    <span class="message-group-badge">{summary}</span>\n')
+                        f.write(f'                    <span class="message-group-expand">▶</span>\n')
+                        f.write('                </div>\n')
+                        f.write('                <div class="message-group-content">\n')
+
+                        for item in group_items:
+                            item_type = item.get("type")
+                            if item_type == "assistant":
+                                thinking = item.get("thinking")
+                                content = item.get("content", "").strip()
+                                tool_calls = item.get("tool_calls")
+
+                                if thinking:
+                                    f.write('                    <div class="grouped-item">\n')
+                                    f.write('                        <div class="grouped-item-label">Thinking</div>\n')
+                                    truncated = thinking[:500] + ("..." if len(thinking) > 500 else "")
+                                    f.write(f'                        <div class="grouped-thinking">{html.escape(truncated)}</div>\n')
+                                    f.write('                    </div>\n')
+
+                                if content:
+                                    f.write('                    <div class="grouped-item">\n')
+                                    f.write('                        <div class="grouped-item-label">Response</div>\n')
+                                    f.write(f'                        <div class="grouped-content">{markdown_to_html(content)}</div>\n')
+                                    f.write('                    </div>\n')
+
+                                if tool_calls:
+                                    f.write('                    <div class="grouped-item">\n')
+                                    f.write('                        <div class="grouped-item-label">Tool Calls</div>\n')
+                                    f.write('                        <div class="grouped-tools">\n')
+                                    for tc in tool_calls:
+                                        tool_name = html.escape(tc.get("name", "unknown"))
+                                        f.write(f'                            <span class="grouped-tool-chip">{tool_name}</span>\n')
+                                    f.write('                        </div>\n')
+                                    f.write('                    </div>\n')
+
+                            elif item_type == "tool_use":
+                                tool_name = html.escape(item.get("tool_name", "unknown"))
+                                tool_input = item.get("tool_input", {})
+                                detail = _get_tool_detail(tool_name, tool_input)
+                                f.write('                    <div class="grouped-item">\n')
+                                f.write(f'                        <div class="grouped-item-label">Tool: {tool_name}</div>\n')
+                                f.write(f'                        <div class="grouped-content" style="font-family:monospace;font-size:0.8em">{html.escape(detail)}</div>\n')
+                                f.write('                    </div>\n')
+
+                        f.write('                </div>\n')
                         f.write('            </div>\n')
+
+                    elif i == start_i:
+                        # No grouping happened, render the single message
+                        if msg_type == "assistant":
+                            thinking = msg.get("thinking")
+                            tool_calls = msg.get("tool_calls")
+                            content = msg.get("content", "")
+
+                            if not content and not thinking and not tool_calls:
+                                i += 1
+                                continue
+
+                            msg_counter += 1
+                            msg_id = f"msg-{msg_counter}"
+                            f.write(f'            <div class="message assistant" id="{msg_id}">\n')
+                            f.write(f'                <div class="role role-assistant">Claude <a href="#{msg_id}" class="message-anchor">#</a></div>\n')
+
+                            if thinking:
+                                f.write('                <details class="thinking">\n')
+                                f.write('                    <summary>Thinking</summary>\n')
+                                f.write(f'                    <div>{html.escape(thinking[:3000])}{"..." if len(thinking) > 3000 else ""}</div>\n')
+                                f.write('                </details>\n')
+
+                            if content:
+                                rendered = markdown_to_html(content)
+                                f.write(f'                <div class="content">{rendered}</div>\n')
+
+                            if tool_calls:
+                                for tc in tool_calls:
+                                    tool_name = html.escape(tc.get("name", "unknown"))
+                                    f.write(f'                <div class="tool-call"><strong>{tool_name}</strong></div>\n')
+
+                            f.write('            </div>\n')
+                            i += 1
+
+                        elif msg_type in ["tool_use", "tool_result"]:
+                            # Single tool message - render compactly
+                            msg_counter += 1
+                            msg_id = f"msg-{msg_counter}"
+                            if msg_type == "tool_use":
+                                tool_name = html.escape(msg.get("tool_name", "unknown"))
+                                tool_input = msg.get("tool_input", {})
+                                detail = _get_tool_detail(tool_name, tool_input)
+                                f.write(f'            <div class="message tool" id="{msg_id}">\n')
+                                f.write(f'                <div class="role role-tool">Tool: {tool_name} <a href="#{msg_id}" class="message-anchor">#</a></div>\n')
+                                f.write(f'                <div class="content" style="font-family:monospace;font-size:0.85em">{html.escape(detail)}</div>\n')
+                                f.write('            </div>\n')
+                            i += 1
+
                 else:
-                    i += 1
+                    i += 1  # Skip unknown message types
 
             f.write("""        </div>
 
@@ -820,6 +1145,14 @@ details.tool-details pre { margin-top: 8px; font-size: 0.75em; max-height: 200px
             <p>Generated by Claude Sessions</p>
         </div>
     </div>
+    <script>
+    function toggleMessageGroup(groupId) {
+        const group = document.getElementById(groupId);
+        if (group) {
+            group.classList.toggle('expanded');
+        }
+    }
+    </script>
 </body>
 </html>""")
 

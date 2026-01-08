@@ -441,24 +441,6 @@ a:hover { color: var(--primary-dark); text-decoration: underline; }
 .pagination-btn:hover:not(:disabled) { background: var(--primary-light); border-color: var(--primary); }
 .pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .pagination-info { font-size: 0.8rem; color: var(--muted); }
-/* Legacy project cards (kept for compatibility) */
-.projects-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
-    gap: 24px;
-}
-.project-card {
-    background: var(--card);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    overflow: hidden;
-    transition: all 0.2s;
-}
-.project-card:hover {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
-}
-.project-card.hidden { display: none; }
 .project-header {
     padding: 20px;
     border-bottom: 1px solid var(--border);
@@ -853,17 +835,6 @@ function initSearch() {
                 row.classList.add('hidden');
             }
         });
-        // Also search in project cards (legacy layout)
-        const cards = document.querySelectorAll('.project-card');
-        cards.forEach(card => {
-            const name = card.querySelector('.project-name')?.textContent.toLowerCase() || '';
-            const path = card.querySelector('.project-path')?.textContent.toLowerCase() || '';
-            if (name.includes(query) || path.includes(query)) {
-                card.classList.remove('hidden');
-            } else {
-                card.classList.add('hidden');
-            }
-        });
         // Update pagination after filter
         if (typeof updatePagination === 'function') updatePagination();
     });
@@ -882,21 +853,6 @@ function toggleSessionGroup(groupId) {
     const group = document.getElementById(groupId);
     if (group) {
         group.classList.toggle('expanded');
-    }
-}
-
-// Toggle more sessions visibility (legacy)
-function toggleMoreSessions(projectId) {
-    const container = document.getElementById('hidden-sessions-' + projectId);
-    const btn = document.getElementById('toggle-btn-' + projectId);
-    if (container && btn) {
-        if (container.style.display === 'none') {
-            container.style.display = 'block';
-            btn.textContent = 'Show fewer sessions';
-        } else {
-            container.style.display = 'none';
-            btn.textContent = btn.dataset.originalText;
-        }
     }
 }
 
@@ -1809,7 +1765,8 @@ def generate_stats_html(stats: Dict[str, Any], output_path: Path) -> None:
     costs = estimate_cost(agg)
 
     # Work hours chart data
-    work_hours_data = [agg["work_hours"].get(str(h), agg["work_hours"].get(h, 0)) for h in range(24)]
+    # Work hours use string keys for JSON serialization consistency
+    work_hours_data = [agg["work_hours"].get(str(h), 0) for h in range(24)]
     max_hour_count = max(work_hours_data) if work_hours_data else 1
 
     # Daily usage for trend chart (last 30 days)

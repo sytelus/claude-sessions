@@ -440,9 +440,9 @@ class StatisticsGenerator:
 
             stats["response_times"].extend(session_stats.get("response_times", []))
 
-            # Track work hours
+            # Track work hours (use string keys for JSON serialization consistency)
             for hour in session_stats.get("active_hours", []):
-                stats["work_hours"][hour] += 1
+                stats["work_hours"][str(hour)] += 1
 
             # Track usage over time
             if session_stats.get("start_time"):
