@@ -40,6 +40,7 @@ Constants:
 import hashlib
 import html
 import json
+import sys
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -956,7 +957,9 @@ def extract_cwd_from_session(jsonl_file: Path) -> Optional[str]:
                     try:
                         entry = json.loads(line)
                         if "cwd" in entry:
-                            return entry["cwd"]
+                            cwd = entry.get("cwd")
+                            if isinstance(cwd, str):
+                                return cwd
                     except json.JSONDecodeError:
                         # Malformed JSON line, try next line
                         continue
@@ -1009,11 +1012,12 @@ def format_short_name(project_name: str, max_len: int = 40, cwd: Optional[str] =
         Last path component, truncated with "..." if over max_len
     """
     full_path = format_project_display_name(project_name, cwd)
+    normalized = full_path.replace("\\", "/")
     # Return just the last component of the path (the actual directory name)
-    if "/" in full_path:
-        name = full_path.rstrip("/").rsplit("/", 1)[-1]
+    if "/" in normalized:
+        name = normalized.rstrip("/").rsplit("/", 1)[-1]
     else:
-        name = full_path
+        name = normalized
     return name if len(name) <= max_len else name[:max_len-3] + "..."
 
 
@@ -1634,10 +1638,10 @@ class HtmlGenerator:
                             "duration_mins": duration_mins,
                             "days_ago": days_ago,
                         }
-                except (OSError, IOError, json.JSONDecodeError, AttributeError, KeyError):
+                except (OSError, json.JSONDecodeError) as exc:
                     # Session parsing failed - continue with empty stats.
                     # Session will still appear in list but without detailed info.
-                    pass
+                    print(f"  Warning: failed to parse {jsonl_file}: {exc}", file=sys.stderr)
 
                 # Extract cwd from first session file for this project
                 if project_cwd is None:

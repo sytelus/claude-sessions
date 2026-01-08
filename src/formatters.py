@@ -49,7 +49,7 @@ import html
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Match, Optional, Tuple
 
 from parser import SessionParser
 from utils import iter_project_dirs, parse_timestamp
@@ -58,6 +58,26 @@ from html_generator import SHARED_CSS
 
 # Constants
 INDENT = 2
+TOOL_OUTPUT_MAX_CHARS = 2000
+UNSAFE_LINK_SCHEMES = {"javascript", "data", "vbscript"}
+
+
+def _sanitize_href(url: str) -> str:
+    """
+    Sanitize a URL used in markdown links.
+
+    Blocks unsafe schemes (e.g., javascript:, data:) by replacing with "#".
+    Returns the original URL for allowed schemes and relative paths.
+    """
+    stripped = url.strip()
+    if not stripped:
+        return "#"
+    lowered = stripped.lower()
+    if ":" in lowered:
+        scheme = lowered.split(":", 1)[0]
+        if scheme in UNSAFE_LINK_SCHEMES:
+            return "#"
+    return stripped
 
 
 def markdown_to_html(text: str) -> str:
@@ -71,21 +91,21 @@ def markdown_to_html(text: str) -> str:
         return ""
 
     # Preserve code blocks with placeholders
-    code_blocks = []
+    code_blocks: List[Tuple[str, str]] = []
 
-    def save_code_block(match):
-        lang = match.group(1) or ""
+    def save_code_block(match: Match[str]) -> str:
+        lang = (match.group(1) or "").strip()
         code = match.group(2)
         idx = len(code_blocks)
         code_blocks.append((lang, code))
         return f"%%CODE_BLOCK_{idx}%%"
 
-    result = re.sub(r"```(\w*)\n?([\s\S]*?)```", save_code_block, text)
+    result = re.sub(r"```([^\n`]*)\n?([\s\S]*?)```", save_code_block, text)
 
     # Preserve tables with placeholders (before HTML escaping)
-    tables = []
+    tables: List[str] = []
 
-    def save_table(match):
+    def save_table(match: Match[str]) -> str:
         table_text = match.group(0)
         idx = len(tables)
         tables.append(table_text)
@@ -115,18 +135,25 @@ def markdown_to_html(text: str) -> str:
     result = re.sub(r"^# (.+)$", r"<h2>\1</h2>", result, flags=re.MULTILINE)
 
     # Links
-    result = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank">\1</a>', result)
+    def replace_link(match: Match[str]) -> str:
+        label = match.group(1)
+        url = match.group(2)
+        safe_url = _sanitize_href(url)
+        return f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer">{label}</a>'
+
+    result = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", replace_link, result)
 
     # Blockquotes
     result = re.sub(r"^&gt; (.+)$", r"<blockquote>\1</blockquote>", result, flags=re.MULTILINE)
 
     # Unordered lists (lines starting with - or *)
-    result = re.sub(r"^[\-\*] (.+)$", r"<li>\1</li>", result, flags=re.MULTILINE)
-    # Wrap consecutive <li> items in <ul>
-    result = re.sub(r"((?:<li>.*?</li>\n?)+)", r"<ul>\1</ul>", result)
-
+    result = re.sub(r"^[\-\*] (.+)$", r'<li data-list="ul">\1</li>', result, flags=re.MULTILINE)
     # Ordered lists (lines starting with number.)
-    result = re.sub(r"^\d+\. (.+)$", r"<li>\1</li>", result, flags=re.MULTILINE)
+    result = re.sub(r"^\d+\. (.+)$", r'<li data-list="ol">\1</li>', result, flags=re.MULTILINE)
+    # Wrap consecutive list items
+    result = re.sub(r'((?:<li data-list="ul">.*?</li>\n?)+)', r"<ul>\1</ul>", result)
+    result = re.sub(r'((?:<li data-list="ol">.*?</li>\n?)+)', r"<ol>\1</ol>", result)
+    result = result.replace(' data-list="ul"', "").replace(' data-list="ol"', "")
 
     # Restore tables as HTML
     for idx, table_text in enumerate(tables):
@@ -329,7 +356,7 @@ def _is_lightweight_assistant_msg(msg: Dict[str, Any]) -> bool:
     return False
 
 
-def _get_tool_detail(tool_name: str, tool_input: Dict[str, Any]) -> str:
+def _get_tool_detail(tool_name: str, tool_input: Optional[Dict[str, Any]]) -> str:
     """
     Extract a brief description of what a tool is doing.
 
@@ -340,6 +367,9 @@ def _get_tool_detail(tool_name: str, tool_input: Dict[str, Any]) -> str:
     Returns:
         Short description string
     """
+    if not isinstance(tool_input, dict):
+        return "" if tool_input is None else str(tool_input)[:50]
+
     if tool_name in ("Read", "Edit", "Write"):
         return tool_input.get("file_path", "")[:50]
     elif tool_name == "Bash":
@@ -580,8 +610,8 @@ class FormatConverter:
                         f.write(f"**Error:** {error}\n\n")
                     if output:
                         f.write("```\n")
-                        f.write(output[:2000])  # Truncate long outputs
-                        if len(output) > 2000:
+                        f.write(output[:TOOL_OUTPUT_MAX_CHARS])  # Truncate long outputs
+                        if len(output) > TOOL_OUTPUT_MAX_CHARS:
                             f.write(f"\n... (truncated, {len(output)} chars total)")
                         f.write("\n```\n\n")
 
@@ -1143,7 +1173,7 @@ details.tool-details pre { margin-top: 8px; font-size: 0.75em; max-height: 200px
                                 f.write(f'            <div class="message tool" id="{msg_id}">\n')
                                 f.write(f'                <div class="role role-tool">Tool Result {"(Error)" if is_error else ""}<a href="#{msg_id}" class="message-anchor">#</a></div>\n')
                                 if output:
-                                    truncated = output[:500] + ("..." if len(output) > 500 else "")
+                                    truncated = output[:TOOL_OUTPUT_MAX_CHARS] + ("..." if len(output) > TOOL_OUTPUT_MAX_CHARS else "")
                                     f.write(f'                <div class="content" style="font-family:monospace;font-size:0.85em">{html.escape(truncated)}</div>\n')
                                 f.write('            </div>\n')
 

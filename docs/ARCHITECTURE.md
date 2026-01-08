@@ -281,6 +281,8 @@ Styled single-page document with:
 - Color-coded message types (blue=user, green=assistant, orange=tool)
 - Responsive design
 - Collapsible thinking sections
+- Markdown conversion for code blocks, tables, ordered/unordered lists, and links
+- Link schemes are sanitized to block unsafe protocols (e.g., javascript:, data:)
 
 #### Data JSON (*.json)
 Structured data with:
