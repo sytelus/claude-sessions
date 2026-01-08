@@ -8,19 +8,38 @@ for browsing Claude Code session backups.
 
 Features:
     - Shared CSS design system with consistent theming
-    - Dark mode support
-    - Index page with project/session navigation and search
+    - Dark/light mode support with persistence
+    - Index page with project/session navigation, search, and pagination
     - Statistics dashboard with rich visualizations
-    - Activity calendar heatmap
-    - Cost estimation
-    - Tool usage breakdown
+    - Activity calendar heatmap (GitHub-style)
+    - Cost estimation based on Claude API pricing
+    - Tool usage breakdown and code metrics
+    - Responsive design for mobile and desktop
 
 Classes:
-    HtmlGenerator: Main class for generating HTML pages
+    HtmlGenerator: Generates index.html with project/session navigation
+
+Functions:
+    generate_stats_html: Generates statistics dashboard (stats.html)
+    generate_calendar_html: Creates GitHub-style activity calendar
+    estimate_cost: Calculates API cost estimates from token usage
+    get_project_hash: Creates deterministic HTML IDs for projects
+    extract_cwd_from_session: Extracts working directory from session file
+    format_project_display_name: Converts project directory to display name
+    format_short_name: Shortened project name (last path component)
+    format_duration: Formats minutes to human-readable string
+    format_days_ago: Formats days ago to human-readable string
+    format_tokens_compact: Formats token counts in K/M notation
+
+Constants:
+    SHARED_CSS: CSS styles shared across all generated pages
+    SHARED_JS: JavaScript for theme toggle, search, and interactivity
+    COST_PER_1M_*: Token pricing constants for cost estimation
 """
 
 import hashlib
 import html
+import json
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -290,7 +309,139 @@ a:hover { color: var(--primary-dark); text-decoration: underline; }
     margin-bottom: 32px;
 }
 
-/* Project cards */
+/* Project list (scalable) */
+.project-list {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+}
+.project-row {
+    border-bottom: 1px solid var(--border);
+    transition: all 0.2s;
+}
+.project-row:last-child { border-bottom: none; }
+.project-row.hidden { display: none; }
+.project-row-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    cursor: pointer;
+    gap: 12px;
+    transition: background 0.2s;
+}
+.project-row-header:hover { background: var(--bg-alt); }
+.project-row-expand {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted);
+    transition: transform 0.2s;
+}
+.project-row.expanded .project-row-expand { transform: rotate(90deg); }
+.project-row-info { flex: 1; min-width: 0; }
+.project-row-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.project-row-path {
+    font-size: 0.7rem;
+    color: var(--muted);
+    font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.project-row-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+.project-row-stat { display: flex; align-items: center; gap: 4px; }
+.project-row-stat strong { color: var(--text); font-weight: 600; }
+/* Responsive stat visibility classes */
+.stat-desktop { display: none; }
+.stat-wide { display: none; }
+@media (min-width: 768px) {
+    .stat-desktop { display: flex; }
+}
+@media (min-width: 1200px) {
+    .stat-wide { display: flex; }
+}
+.project-sessions {
+    display: none;
+    background: var(--bg);
+    padding: 12px 16px 12px 52px;
+    border-top: 1px solid var(--border);
+}
+.project-row.expanded .project-sessions { display: block; }
+.session-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.session-group {
+    background: var(--card);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+.session-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    cursor: pointer;
+    background: var(--bg-alt);
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+.session-group-header:hover { background: var(--border); }
+.session-group-count {
+    background: var(--primary-light);
+    color: var(--primary);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+.session-group-items { display: none; }
+.session-group.expanded .session-group-items { display: block; }
+.sessions-list {
+    padding: 8px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+/* Pagination */
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+}
+.pagination-btn {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--card);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+.pagination-btn:hover:not(:disabled) { background: var(--primary-light); border-color: var(--primary); }
+.pagination-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.pagination-info { font-size: 0.8rem; color: var(--muted); }
+/* Legacy project cards (kept for compatibility) */
 .projects-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
@@ -339,11 +490,6 @@ a:hover { color: var(--primary-dark); text-decoration: underline; }
     color: var(--text-secondary);
 }
 .project-stat strong { color: var(--text); }
-.sessions-list {
-    padding: 12px 20px;
-    max-height: 350px;
-    overflow-y: auto;
-}
 .session-item {
     display: flex;
     align-items: center;
@@ -696,27 +842,50 @@ function initSearch() {
 
     input.addEventListener('input', function(e) {
         const query = e.target.value.toLowerCase();
+        // Search in project rows (new layout)
+        const rows = document.querySelectorAll('.project-row');
+        rows.forEach(row => {
+            const name = row.querySelector('.project-row-name')?.textContent.toLowerCase() || '';
+            const path = row.querySelector('.project-row-path')?.textContent.toLowerCase() || '';
+            if (name.includes(query) || path.includes(query)) {
+                row.classList.remove('hidden');
+            } else {
+                row.classList.add('hidden');
+            }
+        });
+        // Also search in project cards (legacy layout)
         const cards = document.querySelectorAll('.project-card');
-
         cards.forEach(card => {
             const name = card.querySelector('.project-name')?.textContent.toLowerCase() || '';
             const path = card.querySelector('.project-path')?.textContent.toLowerCase() || '';
-            const sessions = card.querySelectorAll('.session-preview');
-            let sessionMatch = false;
-            sessions.forEach(s => {
-                if (s.textContent.toLowerCase().includes(query)) sessionMatch = true;
-            });
-
-            if (name.includes(query) || path.includes(query) || sessionMatch) {
+            if (name.includes(query) || path.includes(query)) {
                 card.classList.remove('hidden');
             } else {
                 card.classList.add('hidden');
             }
         });
+        // Update pagination after filter
+        if (typeof updatePagination === 'function') updatePagination();
     });
 }
 
-// Toggle more sessions visibility
+// Toggle project row expansion
+function toggleProjectRow(projectId) {
+    const row = document.getElementById('project-' + projectId);
+    if (row) {
+        row.classList.toggle('expanded');
+    }
+}
+
+// Toggle session group expansion
+function toggleSessionGroup(groupId) {
+    const group = document.getElementById(groupId);
+    if (group) {
+        group.classList.toggle('expanded');
+    }
+}
+
+// Toggle more sessions visibility (legacy)
 function toggleMoreSessions(projectId) {
     const container = document.getElementById('hidden-sessions-' + projectId);
     const btn = document.getElementById('toggle-btn-' + projectId);
@@ -731,18 +900,125 @@ function toggleMoreSessions(projectId) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', initSearch);
+// Pagination state
+let currentPage = 1;
+const itemsPerPage = 25;
+
+function updatePagination() {
+    const rows = document.querySelectorAll('.project-row:not(.hidden)');
+    const totalPages = Math.ceil(rows.length / itemsPerPage);
+    if (currentPage > totalPages) currentPage = Math.max(1, totalPages);
+
+    const start = (currentPage - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+
+    rows.forEach((row, idx) => {
+        row.style.display = (idx >= start && idx < end) ? '' : 'none';
+    });
+
+    const info = document.querySelector('.pagination-info');
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+
+    if (info) {
+        const visibleCount = rows.length;
+        info.textContent = `Showing ${Math.min(start + 1, visibleCount)}-${Math.min(end, visibleCount)} of ${visibleCount} projects`;
+    }
+    if (prevBtn) prevBtn.disabled = currentPage <= 1;
+    if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+}
+
+function prevPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        updatePagination();
+    }
+}
+
+function nextPage() {
+    const rows = document.querySelectorAll('.project-row:not(.hidden)');
+    const totalPages = Math.ceil(rows.length / itemsPerPage);
+    if (currentPage < totalPages) {
+        currentPage++;
+        updatePagination();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    initSearch();
+    if (document.querySelector('.project-list')) {
+        updatePagination();
+    }
+});
 """
 
 
-def get_project_id(project_name: str) -> str:
-    """Generate a deterministic HTML ID for a project."""
-    hash_val = hashlib.md5(project_name.encode()).hexdigest()[:8]
-    return f"project-{hash_val}"
+def get_project_hash(project_name: str) -> str:
+    """
+    Generate a deterministic hash for a project name.
+
+    Used to create unique HTML IDs for projects. Returns just the hash;
+    callers should add appropriate prefixes (e.g., "project-", "group-").
+
+    Args:
+        project_name: The project directory name
+
+    Returns:
+        8-character hex hash of the project name
+    """
+    return hashlib.md5(project_name.encode()).hexdigest()[:8]
 
 
-def format_project_display_name(project_name: str) -> str:
-    """Convert project directory name to readable display name."""
+def extract_cwd_from_session(jsonl_file: Path) -> Optional[str]:
+    """
+    Extract the cwd (working directory) from a session file.
+
+    Reads through the JSONL file line by line until finding an entry
+    with a "cwd" field. Returns None if file cannot be read or no cwd found.
+
+    Args:
+        jsonl_file: Path to the JSONL session file
+
+    Returns:
+        The working directory path, or None if not found
+    """
+    try:
+        with open(jsonl_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        entry = json.loads(line)
+                        if "cwd" in entry:
+                            return entry["cwd"]
+                    except json.JSONDecodeError:
+                        # Malformed JSON line, try next line
+                        continue
+    except (OSError, IOError):
+        # File cannot be read (missing, permission denied, etc.)
+        pass
+    return None
+
+
+def format_project_display_name(project_name: str, cwd: Optional[str] = None) -> str:
+    """
+    Convert project directory name to readable display name.
+
+    Uses the cwd (working directory) if provided, otherwise falls back
+    to decoding the hyphen-encoded directory name. Claude Code stores
+    projects with paths like "-home-user-project" which decode to
+    "/home/user/project".
+
+    Args:
+        project_name: The project directory name (hyphen-encoded path)
+        cwd: Optional working directory extracted from session file
+
+    Returns:
+        Human-readable path string
+    """
+    if cwd:
+        return cwd
+
+    # Fallback: decode hyphen-encoded path (less reliable)
     if project_name.startswith("-"):
         name = project_name.replace("-", "/")[1:]
     else:
@@ -750,12 +1026,89 @@ def format_project_display_name(project_name: str) -> str:
     return name
 
 
-def format_short_name(project_name: str, max_len: int = 40) -> str:
-    """Get a shortened display name for a project."""
-    name = format_project_display_name(project_name)
-    if len(name) > max_len:
-        return "..." + name[-(max_len - 3):]
-    return name
+def format_short_name(project_name: str, max_len: int = 40, cwd: Optional[str] = None) -> str:
+    """
+    Get a shortened display name for a project.
+
+    Extracts just the final directory name from the full path, useful for
+    displaying in space-constrained UI elements like table cells.
+
+    Args:
+        project_name: The project directory name (hyphen-encoded path)
+        max_len: Maximum length before truncation (default 40)
+        cwd: Optional working directory extracted from session file
+
+    Returns:
+        Last path component, truncated with "..." if over max_len
+    """
+    full_path = format_project_display_name(project_name, cwd)
+    # Return just the last component of the path (the actual directory name)
+    if "/" in full_path:
+        name = full_path.rstrip("/").rsplit("/", 1)[-1]
+    else:
+        name = full_path
+    return name if len(name) <= max_len else name[:max_len-3] + "..."
+
+
+def format_duration(mins: Optional[float]) -> str:
+    """
+    Format a duration in minutes to a human-readable string.
+
+    Args:
+        mins: Duration in minutes, or None
+
+    Returns:
+        Formatted string like "<1m", "45m", "2.5h", "1.2d", or "" if None
+    """
+    if mins is None:
+        return ""
+    if mins < 1:
+        return "<1m"
+    if mins < 60:
+        return f"{int(mins)}m"
+    if mins < 1440:  # 24 hours
+        return f"{mins / 60:.1f}h"
+    return f"{mins / 1440:.1f}d"
+
+
+def format_days_ago(days: Optional[int]) -> str:
+    """
+    Format a number of days ago to a human-readable string.
+
+    Args:
+        days: Number of days ago, or None
+
+    Returns:
+        Formatted string like "today", "yesterday", "3d ago", "2w ago", "1mo ago"
+    """
+    if days is None:
+        return ""
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    if days < 7:
+        return f"{days}d ago"
+    if days < 30:
+        return f"{days // 7}w ago"
+    return f"{days // 30}mo ago"
+
+
+def format_tokens_compact(tokens: int) -> str:
+    """
+    Format token count in compact notation.
+
+    Args:
+        tokens: Number of tokens
+
+    Returns:
+        Formatted string like "500", "9.5K", "1.2M"
+    """
+    if tokens >= 1_000_000:
+        return f"{tokens / 1_000_000:.1f}M"
+    if tokens >= 1_000:
+        return f"{tokens / 1_000:.1f}K"
+    return f"{tokens:,}"
 
 
 def generate_calendar_html(daily_usage: Dict[str, int]) -> str:
@@ -896,11 +1249,12 @@ class HtmlGenerator:
         # Recent sessions across all projects
         all_sessions = []
         for proj in projects_data:
+            project_cwd = proj.get("cwd")
             for session in proj["sessions"]:
                 all_sessions.append({
                     **session,
                     "project": proj["name"],
-                    "project_display": format_short_name(proj["name"], 30)
+                    "project_display": format_short_name(proj["name"], 30, cwd=project_cwd)
                 })
 
         # Sort by date and get recent
@@ -1003,98 +1357,227 @@ class HtmlGenerator:
             <div class="section-header">
                 <h2 class="section-title">Projects</h2>
             </div>
-            <div class="projects-grid">
+            <div class="project-list">
 """
 
-        # Generate project cards
+        # Generate project rows (scalable list)
         for proj in sorted(projects_data, key=lambda x: -x["session_count"]):
-            project_id = get_project_id(proj["name"])
-            display_name = format_short_name(proj["name"])
-            full_path = format_project_display_name(proj["name"])
+            project_hash = get_project_hash(proj["name"])
+            project_cwd = proj.get("cwd")
+            display_name = format_short_name(proj["name"], cwd=project_cwd)
+            full_path = format_project_display_name(proj["name"], cwd=project_cwd)
+
+            # Categorize sessions
+            regular_sessions = []
+            warmup_sessions = []  # Sessions with just "Warmup" as content
+            no_html_sessions = []
+
+            for session in proj["sessions"]:
+                preview_lower = (session.get("preview", "") or "").strip().lower()
+                is_warmup = preview_lower in ("warmup", "warm up", "warm-up") or (
+                    session.get("total_messages", 0) <= 2 and "warmup" in preview_lower
+                )
+                has_html = session.get("html_exists", False)
+
+                if is_warmup:
+                    warmup_sessions.append(session)
+                elif not has_html:
+                    no_html_sessions.append(session)
+                else:
+                    regular_sessions.append(session)
+
+            # Calculate project totals from session stats
+            total_tokens = sum(s.get("total_tokens", 0) for s in proj["sessions"])
+            total_messages = sum(s.get("total_messages", 0) for s in proj["sessions"])
+
+            # Calculate total duration (sum of session durations)
+            total_duration_mins = sum(s.get("duration_mins", 0) or 0 for s in proj["sessions"])
+            duration_str = format_duration(total_duration_mins) if total_duration_mins > 0 else ""
+
+            # Find last active (min days_ago)
+            days_ago_list = [s.get("days_ago") for s in proj["sessions"] if s.get("days_ago") is not None]
+            last_active_str = format_days_ago(min(days_ago_list)) if days_ago_list else ""
+
+            # Format tokens for display (compact format for large numbers)
+            tokens_display = format_tokens_compact(total_tokens)
 
             html_content += f"""
-                <div class="project-card" id="{project_id}">
-                    <div class="project-header">
-                        <h3 class="project-name">{html.escape(display_name)}</h3>
-                        <div class="project-path" title="{html.escape(full_path)}">{html.escape(full_path[:60] + '...' if len(full_path) > 60 else full_path)}</div>
-                    </div>
-                    <div class="project-stats">
-                        <div class="project-stat"><strong>{proj['session_count']}</strong> sessions</div>
-                    </div>
-                    <div class="sessions-list">
-"""
-
-            # Add session items with previews (first 20 visible)
-            for session in proj["sessions"][:20]:
-                session_id = session["id"]
-                session_date = session.get("date", "")
-                preview = html.escape(session.get("preview", "")[:50]) if session.get("preview") else ""
-                html_path = f"{proj['name']}/html/{session_id}.html"
-                html_exists = session.get("html_exists", False)
-
-                html_content += f"""
-                        <div class="session-item">
-                            <div class="session-info">
-                                <span class="session-id" title="{html.escape(session_id)}">{html.escape(session_id[:20])}...</span>
-                                <span class="session-date">{html.escape(session_date)}</span>
-                                {f'<span class="session-preview" title="{preview}">{preview}...</span>' if preview else ''}
-                            </div>
-                            <div class="session-links">
-                                {f'<a href="{html.escape(html_path)}" class="session-link">View</a>' if html_exists else '<span class="session-link" style="opacity: 0.5; cursor: not-allowed;">No HTML</span>'}
-                            </div>
+                <div class="project-row" id="project-{project_hash}">
+                    <div class="project-row-header" onclick="toggleProjectRow('{project_hash}')">
+                        <div class="project-row-expand">▶</div>
+                        <div class="project-row-info">
+                            <div class="project-row-name" title="{html.escape(full_path)}">{html.escape(display_name)}</div>
+                            <div class="project-row-path">{html.escape(full_path)}</div>
                         </div>
+                        <div class="project-row-stats">
+                            <div class="project-row-stat"><strong>{proj['session_count']}</strong> sessions</div>
+                            <div class="project-row-stat"><strong>{total_messages:,}</strong> msgs</div>
+                            <div class="project-row-stat stat-desktop"><strong>{tokens_display}</strong> tokens</div>
+                            {f'<div class="project-row-stat stat-desktop"><strong>{duration_str}</strong> time</div>' if duration_str else ''}
+                            {f'<div class="project-row-stat stat-wide"><strong>{last_active_str}</strong></div>' if last_active_str else ''}
+                        </div>
+                    </div>
+                    <div class="project-sessions">
+                        <div class="session-groups">
 """
 
-            # Show additional sessions in a hidden container
-            if proj["session_count"] > 20:
-                extra_count = proj['session_count'] - 20
+            # Regular sessions
+            if regular_sessions:
                 html_content += f"""
-                        <div id="hidden-sessions-{project_id}" style="display: none;">
+                            <div class="session-group expanded" id="group-regular-{project_hash}">
+                                <div class="session-group-header" onclick="toggleSessionGroup('group-regular-{project_hash}')">
+                                    <span>📝 Active Sessions</span>
+                                    <span class="session-group-count">{len(regular_sessions)}</span>
+                                </div>
+                                <div class="session-group-items">
+                                    <div class="sessions-list">
 """
-                for session in proj["sessions"][20:]:
+                for session in regular_sessions[:30]:
                     session_id = session["id"]
                     session_date = session.get("date", "")
-                    preview = html.escape(session.get("preview", "")[:50]) if session.get("preview") else ""
+                    preview = html.escape(session.get("preview", "")[:40]) if session.get("preview") else ""
                     html_path = f"{proj['name']}/html/{session_id}.html"
-                    html_exists = session.get("html_exists", False)
+                    msgs = session.get("total_messages", 0)
+                    tokens = session.get("total_tokens", 0)
+                    duration = format_duration(session.get("duration_mins"))
+                    days_ago = format_days_ago(session.get("days_ago"))
+
+                    stats_html = f'<span style="color:var(--muted);font-size:0.65rem;margin-left:8px;">{msgs} msgs • {tokens:,} tok'
+                    if duration:
+                        stats_html += f' • {duration}'
+                    if days_ago:
+                        stats_html += f' • {days_ago}'
+                    stats_html += '</span>'
 
                     html_content += f"""
-                            <div class="session-item">
-                                <div class="session-info">
-                                    <span class="session-id" title="{html.escape(session_id)}">{html.escape(session_id[:20])}...</span>
-                                    <span class="session-date">{html.escape(session_date)}</span>
-                                    {f'<span class="session-preview" title="{preview}">{preview}...</span>' if preview else ''}
-                                </div>
-                                <div class="session-links">
-                                    {f'<a href="{html.escape(html_path)}" class="session-link">View</a>' if html_exists else '<span class="session-link" style="opacity: 0.5; cursor: not-allowed;">No HTML</span>'}
+                                        <div class="session-item">
+                                            <div class="session-info">
+                                                <span class="session-id" title="{html.escape(session_id)}">{html.escape(session_id[:16])}...{stats_html}</span>
+                                                <span class="session-preview" title="{preview}">{preview}</span>
+                                            </div>
+                                            <div class="session-links">
+                                                <a href="{html.escape(html_path)}" class="session-link">View</a>
+                                            </div>
+                                        </div>
+"""
+                if len(regular_sessions) > 30:
+                    html_content += f"""
+                                        <div class="session-item" style="justify-content:center;color:var(--muted);font-size:0.8rem;">
+                                            +{len(regular_sessions) - 30} more sessions
+                                        </div>
+"""
+                html_content += """
+                                    </div>
                                 </div>
                             </div>
 """
-                html_content += """
-                        </div>
-"""
+
+            # Warmup/empty sessions (collapsed by default)
+            if warmup_sessions:
                 html_content += f"""
-                        <div class="session-item" style="justify-content: center;">
-                            <button id="toggle-btn-{project_id}" data-original-text="+{extra_count} more sessions" onclick="toggleMoreSessions('{project_id}')" style="background: var(--primary-light); color: var(--primary); border: none; padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-weight: 500;">
-                                +{extra_count} more sessions
-                            </button>
-                        </div>
+                            <div class="session-group" id="group-warmup-{project_hash}">
+                                <div class="session-group-header" onclick="toggleSessionGroup('group-warmup-{project_hash}')" title="Sessions that only contain a 'Warmup' message with no substantial content">
+                                    <span>🔸 Empty/Warmup Sessions</span>
+                                    <span class="session-group-count">{len(warmup_sessions)}</span>
+                                </div>
+                                <div class="session-group-items">
+                                    <div class="sessions-list" style="max-height:200px;">
+                                        <div style="padding:8px;font-size:0.75rem;color:var(--muted);background:var(--bg-alt);margin-bottom:8px;border-radius:4px;">
+                                            ℹ️ These are sessions with only "Warmup" messages. They are typically test or initialization sessions.
+                                        </div>
+"""
+                for session in warmup_sessions[:10]:
+                    session_id = session["id"]
+                    session_date = session.get("date", "")
+                    html_path = f"{proj['name']}/html/{session_id}.html"
+                    has_html = session.get("html_exists", False)
+
+                    html_content += f"""
+                                        <div class="session-item">
+                                            <div class="session-info">
+                                                <span class="session-id">{html.escape(session_id[:16])}...</span>
+                                                <span class="session-date">{html.escape(session_date)}</span>
+                                            </div>
+                                            <div class="session-links">
+                                                {f'<a href="{html.escape(html_path)}" class="session-link">View</a>' if has_html else ''}
+                                            </div>
+                                        </div>
+"""
+                if len(warmup_sessions) > 10:
+                    html_content += f"""
+                                        <div class="session-item" style="justify-content:center;color:var(--muted);font-size:0.8rem;">
+                                            +{len(warmup_sessions) - 10} more
+                                        </div>
+"""
+                html_content += """
+                                    </div>
+                                </div>
+                            </div>
+"""
+
+            # No HTML sessions (collapsed by default)
+            if no_html_sessions:
+                html_content += f"""
+                            <div class="session-group" id="group-nohtml-{project_hash}">
+                                <div class="session-group-header" onclick="toggleSessionGroup('group-nohtml-{project_hash}')" title="Sessions without HTML view - usually due to parsing errors or incomplete data">
+                                    <span>⚠️ Sessions Without HTML</span>
+                                    <span class="session-group-count">{len(no_html_sessions)}</span>
+                                </div>
+                                <div class="session-group-items">
+                                    <div class="sessions-list" style="max-height:200px;">
+                                        <div style="padding:8px;font-size:0.75rem;color:var(--muted);background:var(--bg-alt);margin-bottom:8px;border-radius:4px;">
+                                            ℹ️ These sessions don't have HTML views. This can happen when:<br>
+                                            • The session data couldn't be parsed<br>
+                                            • The session is very new and not yet processed<br>
+                                            • There was an error during HTML generation
+                                        </div>
+"""
+                for session in no_html_sessions[:10]:
+                    session_id = session["id"]
+                    session_date = session.get("date", "")
+                    preview = html.escape(session.get("preview", "")[:30]) if session.get("preview") else ""
+
+                    html_content += f"""
+                                        <div class="session-item">
+                                            <div class="session-info">
+                                                <span class="session-id">{html.escape(session_id[:16])}...</span>
+                                                <span class="session-date">{html.escape(session_date)}</span>
+                                                {f'<span class="session-preview">{preview}</span>' if preview else ''}
+                                            </div>
+                                        </div>
+"""
+                if len(no_html_sessions) > 10:
+                    html_content += f"""
+                                        <div class="session-item" style="justify-content:center;color:var(--muted);font-size:0.8rem;">
+                                            +{len(no_html_sessions) - 10} more
+                                        </div>
+"""
+                html_content += """
+                                    </div>
+                                </div>
+                            </div>
 """
 
             html_content += """
+                        </div>
                     </div>
                 </div>
 """
 
         if not projects_data:
             html_content += """
-                <div class="empty-state">
+                <div style="padding: 40px; text-align: center; color: var(--muted);">
                     <h3>No sessions found</h3>
                     <p>Run a backup to populate this page.</p>
                 </div>
 """
 
         html_content += f"""
+            </div>
+            <div class="pagination">
+                <button class="pagination-btn" id="prev-page" onclick="prevPage()">← Previous</button>
+                <span class="pagination-info">Loading...</span>
+                <button class="pagination-btn" id="next-page" onclick="nextPage()">Next →</button>
             </div>
         </div>
 
@@ -1125,18 +1608,22 @@ class HtmlGenerator:
         for project_dir in iter_project_dirs(output_dir):
             sessions = []
             html_dir = project_dir / "html"
+            project_cwd = None  # Will be extracted from first session
 
             # Get session info from JSONL files
-            for jsonl_file in sorted(
+            jsonl_files = sorted(
                 project_dir.glob("*.jsonl"),
                 key=lambda x: x.stat().st_mtime,
                 reverse=True
-            ):
+            )
+
+            for jsonl_file in jsonl_files:
                 session_id = jsonl_file.stem
 
                 # Get date and preview from first message
                 date_str = ""
                 preview = ""
+                session_stats = {}
                 try:
                     messages = self.parser.parse_file(jsonl_file)
                     if messages:
@@ -1149,8 +1636,45 @@ class HtmlGenerator:
                             if msg.type == "user" and msg.content:
                                 preview = msg.content.strip()[:100]
                                 break
-                except Exception:
+
+                        # Calculate session stats
+                        user_msgs = sum(1 for m in messages if m.type == "user")
+                        asst_msgs = sum(1 for m in messages if m.type == "assistant")
+                        total_tokens = 0
+                        for msg in messages:
+                            if msg.usage:
+                                total_tokens += msg.usage.get("input_tokens", 0)
+                                total_tokens += msg.usage.get("output_tokens", 0)
+
+                        # Calculate session duration
+                        timestamps = [m.timestamp_dt for m in messages if m.timestamp_dt]
+                        duration_mins = None
+                        if len(timestamps) >= 2:
+                            duration = (max(timestamps) - min(timestamps)).total_seconds() / 60
+                            duration_mins = round(duration, 1)
+
+                        # Calculate days ago
+                        days_ago = None
+                        if timestamps:
+                            latest = max(timestamps)
+                            days_ago = (datetime.now(latest.tzinfo) - latest).days
+
+                        session_stats = {
+                            "user_messages": user_msgs,
+                            "assistant_messages": asst_msgs,
+                            "total_messages": len(messages),
+                            "total_tokens": total_tokens,
+                            "duration_mins": duration_mins,
+                            "days_ago": days_ago,
+                        }
+                except (OSError, IOError, json.JSONDecodeError, AttributeError, KeyError):
+                    # Session parsing failed - continue with empty stats.
+                    # Session will still appear in list but without detailed info.
                     pass
+
+                # Extract cwd from first session file for this project
+                if project_cwd is None:
+                    project_cwd = extract_cwd_from_session(jsonl_file)
 
                 # Check if HTML exists
                 html_exists = (html_dir / f"{session_id}.html").exists()
@@ -1160,16 +1684,102 @@ class HtmlGenerator:
                     "date": date_str,
                     "preview": preview,
                     "html_exists": html_exists,
+                    **session_stats,
                 })
 
             if sessions:
                 projects.append({
                     "name": project_dir.name,
+                    "cwd": project_cwd,
                     "session_count": len(sessions),
                     "sessions": sessions,
                 })
 
         return projects
+
+
+def _generate_rates_section(agg: Dict[str, Any]) -> str:
+    """
+    Generate the Daily Rates section HTML for the statistics page.
+
+    Creates a grid of cards showing per-day averages for sessions, messages,
+    tokens, tool calls, code lines, cost, and time. Only rendered if rate
+    data is available in the aggregate statistics.
+
+    Args:
+        agg: Aggregate statistics dictionary containing "rates" and "span_days"
+
+    Returns:
+        HTML string for the rates section, or empty string if no rate data
+    """
+    rates = agg.get("rates", {})
+    span_days = agg.get("span_days", 0)
+
+    if not rates or span_days == 0:
+        return ""
+
+    # Calculate total time for display
+    total_time_mins = agg.get("total_time_mins", 0)
+    time_per_day = rates.get("time_per_day_mins", 0)
+    avg_session_dur = agg.get("session_duration_stats", {}).get("avg_minutes", 0)
+
+    # Format total time nicely
+    if total_time_mins >= 60:
+        total_time_str = f"{total_time_mins / 60:.1f} hrs"
+    else:
+        total_time_str = f"{total_time_mins:.0f} min"
+
+    # Format time per day
+    if time_per_day >= 60:
+        time_per_day_str = f"{time_per_day / 60:.1f} hrs"
+    else:
+        time_per_day_str = f"{time_per_day:.0f} min"
+
+    return f"""
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Daily Rates</h2>
+                <span class="section-subtitle" style="color: var(--text-secondary); margin-left: 12px;">Based on {span_days} day span ({agg.get('first_date', 'N/A')} to {agg.get('last_date', 'N/A')})</span>
+            </div>
+            <div class="stats-grid">
+                <div class="card" title="Average number of Claude sessions started per day">
+                    <div class="card-title">Sessions/Day</div>
+                    <div class="card-value">{rates.get('sessions_per_day', 0):.1f}</div>
+                    <div class="card-detail">{agg.get('total_sessions', 0):,} total</div>
+                </div>
+                <div class="card" title="Average messages (user + assistant) exchanged per day">
+                    <div class="card-title">Messages/Day</div>
+                    <div class="card-value">{rates.get('messages_per_day', 0):.0f}</div>
+                    <div class="card-detail">{agg.get('total_messages', 0):,} total</div>
+                </div>
+                <div class="card" title="Average tokens (input + output) consumed per day">
+                    <div class="card-title">Tokens/Day</div>
+                    <div class="card-value">{rates.get('tokens_per_day', 0):,.0f}</div>
+                    <div class="card-detail">{agg.get('total_tokens', 0):,} total</div>
+                </div>
+                <div class="card" title="Average tool invocations (Read, Write, Bash, etc) per day">
+                    <div class="card-title">Tool Calls/Day</div>
+                    <div class="card-value">{rates.get('tool_calls_per_day', 0):.1f}</div>
+                    <div class="card-detail">{agg.get('total_tool_uses', 0):,} total</div>
+                </div>
+                <div class="card" title="Code lines per day = code block lines + Write tool lines + Edit tool lines">
+                    <div class="card-title">Code Lines/Day</div>
+                    <div class="card-value">{rates.get('code_lines_per_day', 0):,.0f}</div>
+                    <div class="card-detail">{agg.get('total_code_lines', 0) + agg.get('total_lines_written', 0) + agg.get('total_lines_edited', 0):,} total</div>
+                </div>
+                <div class="card insight-card" title="Estimated daily cost based on Claude API pricing">
+                    <div class="card-title">Cost/Day</div>
+                    <div class="card-value money">${rates.get('cost_per_day', 0):.2f}</div>
+                    <div class="card-detail">${agg.get('estimated_cost', 0):.2f} total</div>
+                </div>
+                <div class="card" title="Estimated time spent per day based on average session duration of {avg_session_dur:.1f} min">
+                    <div class="card-title">Time/Day</div>
+                    <div class="card-value">{time_per_day_str}</div>
+                    <div class="card-detail">{total_time_str} total (estimated)</div>
+                </div>
+            </div>
+        </div>
+"""
 
 
 def generate_stats_html(stats: Dict[str, Any], output_path: Path) -> None:
@@ -1247,42 +1857,45 @@ def generate_stats_html(stats: Dict[str, Any], output_path: Path) -> None:
     <div class="container">
         <div class="header">
             <h1>Usage Statistics</h1>
-            <p class="subtitle">Generated: {html.escape(stats['generated_at'])}</p>
+            <p class="subtitle">Generated: {html.escape(stats['generated_at'])}{f" &bull; {agg.get('first_date', 'N/A')} to {agg.get('last_date', 'N/A')} ({agg.get('span_days', 0)} days)" if agg.get('span_days') else ''}</p>
         </div>
 
         <!-- Cost & Overview -->
         <div class="stats-grid">
-            <div class="card insight-card">
+            <div class="card insight-card" title="Estimated based on Claude API pricing: $3/M input tokens, $15/M output tokens, $0.30/M cached tokens">
                 <div class="card-title">Estimated Cost</div>
                 <div class="card-value money">${costs['total']:.2f}</div>
                 <div class="card-detail">${costs['cache_savings']:.2f} saved via caching</div>
             </div>
-            <div class="card">
+            <div class="card" title="Total conversation sessions across all projects">
                 <div class="card-title">Total Sessions</div>
                 <div class="card-value">{agg['total_sessions']:,}</div>
                 <div class="card-detail">{len(projects)} projects</div>
             </div>
-            <div class="card">
+            <div class="card" title="User messages (your prompts) + assistant messages (Claude responses)">
                 <div class="card-title">Total Messages</div>
                 <div class="card-value">{agg['total_messages']:,}</div>
                 <div class="card-detail">{agg['total_user_messages']:,} user / {agg['total_assistant_messages']:,} assistant</div>
             </div>
-            <div class="card">
+            <div class="card" title="Input tokens (prompts + context) / Output tokens (Claude responses)">
                 <div class="card-title">Total Tokens</div>
                 <div class="card-value">{agg['total_tokens']:,}</div>
                 <div class="card-detail">{agg['total_input_tokens']:,} in / {agg['total_output_tokens']:,} out</div>
             </div>
-            <div class="card">
+            <div class="card" title="Tool invocations (Read, Write, Edit, Bash, etc). Error rate shows percentage of failed calls.">
                 <div class="card-title">Tool Calls</div>
                 <div class="card-value">{agg.get('total_tool_uses', 0):,}</div>
                 <div class="card-detail">{agg.get('tool_error_rate', 0):.1%} error rate</div>
             </div>
-            <div class="card">
+            <div class="card" title="Percentage of input tokens that were cached and reused (saves cost)">
                 <div class="card-title">Cache Hit Rate</div>
                 <div class="card-value">{agg.get('cache_hit_rate', 0):.1%}</div>
                 <div class="card-detail">{agg.get('total_cache_read_tokens', 0):,} cached tokens</div>
             </div>
         </div>
+
+        <!-- Daily Rates Section -->
+        {_generate_rates_section(agg)}
 
         <!-- Activity Calendar -->
         <div class="section">
@@ -1451,38 +2064,58 @@ def generate_stats_html(stats: Dict[str, Any], output_path: Path) -> None:
         </div>
 """
 
-    # Additional insights
+    # Additional insights - calculate code line totals
+    code_blocks_lines = agg.get('total_code_lines', 0)
+    write_lines = agg.get('total_lines_written', 0)
+    edit_lines = agg.get('total_lines_edited', 0)
+    total_code_lines = code_blocks_lines + write_lines + edit_lines
+
+    # Format estimated time
+    total_time_mins = agg.get('total_time_mins', 0)
+    avg_dur = agg.get('session_duration_stats', {}).get('avg_minutes', 0)
+    if total_time_mins >= 60:
+        total_time_str = f"{total_time_mins / 60:.1f} hrs"
+    else:
+        total_time_str = f"{total_time_mins:.0f} min"
+
     html_content += f"""
         <div class="section">
             <div class="section-header">
-                <h2 class="section-title">Quick Insights</h2>
+                <h2 class="section-title">Code & Activity Metrics</h2>
             </div>
             <div class="stats-grid">
-                <div class="card">
-                    <div class="card-title">Code Blocks Generated</div>
-                    <div class="card-value">{agg.get('total_code_blocks', 0):,}</div>
+                <div class="card insight-card" title="Total lines of code: {code_blocks_lines:,} in code blocks + {write_lines:,} via Write tool + {edit_lines:,} via Edit tool">
+                    <div class="card-title">Total Code Lines</div>
+                    <div class="card-value">{total_code_lines:,}</div>
+                    <div class="card-detail">Hover for breakdown</div>
                 </div>
-                <div class="card">
-                    <div class="card-title">Code Lines in Blocks</div>
-                    <div class="card-value">{agg.get('total_code_lines', 0):,}</div>
+                <div class="card" title="Lines of code within markdown code blocks (```...```) in assistant responses">
+                    <div class="card-title">Code Block Lines</div>
+                    <div class="card-value">{code_blocks_lines:,}</div>
+                    <div class="card-detail">{agg.get('total_code_blocks', 0):,} blocks</div>
                 </div>
-                <div class="card">
-                    <div class="card-title">Lines Written (Write)</div>
-                    <div class="card-value">{agg.get('total_lines_written', 0):,}</div>
+                <div class="card" title="Lines written using the Write tool to create or replace files">
+                    <div class="card-title">Write Tool Lines</div>
+                    <div class="card-value">{write_lines:,}</div>
                 </div>
-                <div class="card">
-                    <div class="card-title">Lines Edited (Edit)</div>
-                    <div class="card-value">{agg.get('total_lines_edited', 0):,}</div>
+                <div class="card" title="Lines affected by the Edit tool for modifying existing files">
+                    <div class="card-title">Edit Tool Lines</div>
+                    <div class="card-value">{edit_lines:,}</div>
                 </div>
-                <div class="card">
+                <div class="card" title="Estimated total time based on session durations. Average session: {avg_dur:.1f} min">
+                    <div class="card-title">Est. Total Time</div>
+                    <div class="card-value">{total_time_str}</div>
+                    <div class="card-detail">Avg: {avg_dur:.1f} min/session</div>
+                </div>
+                <div class="card" title="Internal reasoning blocks used by Claude for complex problems">
                     <div class="card-title">Thinking Blocks</div>
                     <div class="card-value">{agg.get('total_thinking_blocks', 0):,}</div>
                 </div>
-                <div class="card">
+                <div class="card" title="Average tokens (input + output) per session">
                     <div class="card-title">Avg Tokens/Session</div>
                     <div class="card-value">{agg.get('avg_tokens_per_session', 0):,.0f}</div>
                 </div>
-                <div class="card">
+                <div class="card" title="Average number of conversation turns per session">
                     <div class="card-title">Avg Messages/Session</div>
                     <div class="card-value">{agg.get('avg_messages_per_session', 0):.1f}</div>
                 </div>
@@ -1510,12 +2143,12 @@ def generate_stats_html(stats: Dict[str, Any], output_path: Path) -> None:
 """
 
     for proj in sorted(projects, key=lambda x: -x["total_tokens"]):
-        project_id = get_project_id(proj["project_name"])
+        project_hash = get_project_hash(proj["project_name"])
         display_name = format_short_name(proj["project_name"], 50)
         full_path = format_project_display_name(proj["project_name"])
 
-        html_content += f"""                    <tr id="{project_id}">
-                        <td><a href="index.html#{project_id}" class="table-link" title="{html.escape(full_path)}">{html.escape(display_name)}</a></td>
+        html_content += f"""                    <tr id="project-{project_hash}">
+                        <td><a href="index.html#project-{project_hash}" class="table-link" title="{html.escape(full_path)}">{html.escape(display_name)}</a></td>
                         <td>{proj['sessions']:,}</td>
                         <td>{proj['total_messages']:,}</td>
                         <td>{proj['total_tokens']:,}</td>

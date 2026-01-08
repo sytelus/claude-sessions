@@ -299,6 +299,52 @@ class StatisticsGenerator:
         else:
             aggregate["tool_error_rate"] = 0.0
 
+        # Calculate date range and time-based rates
+        all_dates = list(aggregate["daily_usage"].keys())
+        if all_dates:
+            first_date = min(all_dates)
+            last_date = max(all_dates)
+            aggregate["first_date"] = first_date
+            aggregate["last_date"] = last_date
+
+            # Calculate span in days
+            try:
+                first_dt = datetime.strptime(first_date, "%Y-%m-%d")
+                last_dt = datetime.strptime(last_date, "%Y-%m-%d")
+                span_days = max(1, (last_dt - first_dt).days + 1)  # Include both ends
+                aggregate["span_days"] = span_days
+
+                # Calculate rates per day
+                aggregate["rates"] = {
+                    "sessions_per_day": round(aggregate["total_sessions"] / span_days, 2),
+                    "messages_per_day": round(aggregate["total_messages"] / span_days, 2),
+                    "tokens_per_day": round(aggregate["total_tokens"] / span_days, 0),
+                    "tool_calls_per_day": round(aggregate["total_tool_uses"] / span_days, 2),
+                    "code_lines_per_day": round(
+                        (aggregate["total_code_lines"] + aggregate["total_lines_written"] + aggregate["total_lines_edited"]) / span_days, 1
+                    ),
+                }
+
+                # Calculate estimated cost per day (using pricing from html_generator)
+                # Prices per 1M tokens
+                input_cost = aggregate["total_input_tokens"] * 3.00 / 1_000_000
+                output_cost = aggregate["total_output_tokens"] * 15.00 / 1_000_000
+                cache_read_cost = aggregate["total_cache_read_tokens"] * 0.30 / 1_000_000
+                cache_create_cost = aggregate["total_cache_creation_tokens"] * 3.75 / 1_000_000
+                total_cost = input_cost + output_cost + cache_read_cost + cache_create_cost
+                aggregate["estimated_cost"] = round(total_cost, 2)
+                aggregate["rates"]["cost_per_day"] = round(total_cost / span_days, 2)
+
+                # Calculate total time spent (sum of session durations)
+                if aggregate.get("session_duration_stats"):
+                    avg_duration = aggregate["session_duration_stats"]["avg_minutes"]
+                    total_time_mins = avg_duration * aggregate["total_sessions"]
+                    aggregate["total_time_mins"] = round(total_time_mins, 1)
+                    aggregate["rates"]["time_per_day_mins"] = round(total_time_mins / span_days, 1)
+            except (ValueError, TypeError):
+                aggregate["span_days"] = 0
+                aggregate["rates"] = {}
+
         # Remove raw lists from aggregate (too large for JSON)
         del aggregate["all_session_durations"]
         del aggregate["all_response_times"]

@@ -86,7 +86,7 @@ class BackupManager:
         self.input_dir = Path(input_dir)
         self.output_dir = Path(output_dir)
 
-    def backup(self) -> Dict[str, Any]:
+    def backup(self, force: bool = False) -> Dict[str, Any]:
         """
         Perform incremental backup.
 
@@ -99,6 +99,10 @@ class BackupManager:
             - Overwrites files with different timestamps (>1 second difference)
             - Skips files with identical timestamps (within 1 second)
             - Preserves original timestamps on all copied files
+
+        Args:
+            force: If True, overwrite all files regardless of timestamp.
+                   Default is False (incremental backup).
 
         Returns:
             dict: Backup statistics with the following keys:
@@ -142,7 +146,7 @@ class BackupManager:
 
             # Process each JSONL file
             for input_file in jsonl_files:
-                result = self._sync_file(input_file, output_project)
+                result = self._sync_file(input_file, output_project, force=force)
                 if result == "copied":
                     stats["files_copied"] += 1
                     print(f"    + Copied: {input_file.name}")
@@ -158,7 +162,7 @@ class BackupManager:
         return stats
 
     def _sync_file(
-        self, input_file: Path, output_project: Path
+        self, input_file: Path, output_project: Path, force: bool = False
     ) -> Literal["copied", "updated", "skipped"] | str:
         """
         Sync a single file from input to output.
@@ -166,6 +170,7 @@ class BackupManager:
         Args:
             input_file: Source file path
             output_project: Destination project directory
+            force: If True, overwrite even if timestamps match
 
         Returns:
             Status: "copied", "updated", "skipped", or "error: <message>"
@@ -177,14 +182,15 @@ class BackupManager:
             input_mtime = input_stat.st_mtime
 
             if output_file.exists():
-                output_stat = output_file.stat()
-                output_mtime = output_stat.st_mtime
+                if not force:
+                    output_stat = output_file.stat()
+                    output_mtime = output_stat.st_mtime
 
-                # Skip if timestamps match
-                if abs(input_mtime - output_mtime) < 1:  # 1 second tolerance
-                    return "skipped"
+                    # Skip if timestamps match
+                    if abs(input_mtime - output_mtime) < 1:  # 1 second tolerance
+                        return "skipped"
 
-                # Update if timestamps differ
+                # Update if timestamps differ or force is True
                 shutil.copy2(input_file, output_file)
                 self._preserve_timestamp(input_file, output_file)
                 return "updated"

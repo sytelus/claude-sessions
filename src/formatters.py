@@ -47,8 +47,9 @@ Constants:
 
 import html
 import json
+import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from parser import SessionParser
 from utils import iter_project_dirs, parse_timestamp
@@ -57,6 +58,143 @@ from html_generator import SHARED_CSS
 
 # Constants
 INDENT = 2
+
+
+def markdown_to_html(text: str) -> str:
+    """
+    Convert markdown text to HTML.
+
+    Supports code blocks, inline code, bold, italic, headers, links, blockquotes.
+    """
+    if not text:
+        return ""
+
+    # Preserve code blocks with placeholders
+    code_blocks = []
+
+    def save_code_block(match):
+        lang = match.group(1) or ""
+        code = match.group(2)
+        idx = len(code_blocks)
+        code_blocks.append((lang, code))
+        return f"%%CODE_BLOCK_{idx}%%"
+
+    result = re.sub(r"```(\w*)\n?([\s\S]*?)```", save_code_block, text)
+
+    # Escape HTML
+    result = html.escape(result)
+
+    # Inline code
+    result = re.sub(r"`([^`]+)`", r'<code>\1</code>', result)
+
+    # Bold and italic
+    result = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", result)
+    result = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", result)
+
+    # Headers
+    result = re.sub(r"^### (.+)$", r"<h4>\1</h4>", result, flags=re.MULTILINE)
+    result = re.sub(r"^## (.+)$", r"<h3>\1</h3>", result, flags=re.MULTILINE)
+    result = re.sub(r"^# (.+)$", r"<h2>\1</h2>", result, flags=re.MULTILINE)
+
+    # Links
+    result = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank">\1</a>', result)
+
+    # Blockquotes
+    result = re.sub(r"^&gt; (.+)$", r"<blockquote>\1</blockquote>", result, flags=re.MULTILINE)
+
+    # Restore code blocks with syntax highlighting
+    for idx, (lang, code) in enumerate(code_blocks):
+        lang_class = f' class="language-{lang}"' if lang else ""
+        escaped_code = html.escape(code)
+        # Apply basic highlighting
+        highlighted = syntax_highlight(escaped_code, lang)
+        replacement = f'<pre{lang_class}><code>{highlighted}</code></pre>'
+        result = result.replace(f"%%CODE_BLOCK_{idx}%%", replacement)
+
+    return result
+
+
+def syntax_highlight(code: str, lang: str) -> str:
+    """Apply basic syntax highlighting to code."""
+    if not lang:
+        return code
+
+    lang_lower = lang.lower()
+    if lang_lower in ['js', 'jsx']:
+        lang_lower = 'javascript'
+    elif lang_lower in ['ts', 'tsx']:
+        lang_lower = 'typescript'
+    elif lang_lower == 'py':
+        lang_lower = 'python'
+
+    keywords = {
+        'python': ['def', 'class', 'import', 'from', 'return', 'if', 'else', 'elif', 'for', 'while', 'try', 'except', 'with', 'as', 'in', 'not', 'and', 'or', 'True', 'False', 'None', 'async', 'await'],
+        'javascript': ['function', 'const', 'let', 'var', 'return', 'if', 'else', 'for', 'while', 'class', 'import', 'export', 'async', 'await', 'true', 'false', 'null'],
+        'typescript': ['function', 'const', 'let', 'var', 'return', 'if', 'else', 'for', 'while', 'class', 'import', 'export', 'async', 'await', 'true', 'false', 'null', 'interface', 'type'],
+    }
+
+    kws = keywords.get(lang_lower, [])
+    result = code
+
+    # Highlight comments
+    result = re.sub(r'(#[^\n]*)', r'<span class="comment">\1</span>', result)
+    result = re.sub(r'(//[^\n]*)', r'<span class="comment">\1</span>', result)
+
+    # Highlight strings
+    result = re.sub(r'(&quot;[^&]*&quot;)', r'<span class="string">\1</span>', result)
+
+    # Highlight keywords
+    for kw in kws:
+        result = re.sub(rf'\b({kw})\b', r'<span class="keyword">\1</span>', result)
+
+    # Highlight numbers
+    result = re.sub(r'\b(\d+\.?\d*)\b', r'<span class="number">\1</span>', result)
+
+    return result
+
+
+def render_diff(content: str) -> str:
+    """Render diff content with proper styling."""
+    lines = content.split('\n')
+    result = []
+    for line in lines:
+        escaped = html.escape(line)
+        if line.startswith('+') and not line.startswith('+++'):
+            result.append(f'<span class="diff-add">{escaped}</span>')
+        elif line.startswith('-') and not line.startswith('---'):
+            result.append(f'<span class="diff-del">{escaped}</span>')
+        elif line.startswith('@@'):
+            result.append(f'<span class="diff-info">{escaped}</span>')
+        else:
+            result.append(escaped)
+    return '\n'.join(result)
+
+
+def is_diff_content(content: str) -> bool:
+    """Check if content looks like a diff."""
+    if not content:
+        return False
+    lines = content.split('\n')[:20]
+    diff_patterns = sum(1 for line in lines if (
+        line.startswith('diff --git') or line.startswith('--- ') or
+        line.startswith('+++ ') or (line.startswith('@@') and '@@' in line[2:])
+    ))
+    return diff_patterns >= 2
+
+
+def format_duration_human(minutes: Optional[float]) -> str:
+    """Format duration in human-readable format."""
+    if minutes is None:
+        return ""
+    if minutes < 1:
+        return "<1 min"
+    if minutes < 60:
+        return f"{int(minutes)} min"
+    if minutes < 1440:
+        hours = minutes / 60
+        return f"{hours:.1f} hrs"
+    days = minutes / 1440
+    return f"{days:.1f} days"
 
 
 class FormatConverter:
@@ -103,7 +241,7 @@ class FormatConverter:
         """Initialize converter with a SessionParser instance."""
         self.parser = SessionParser()
 
-    def convert_all(self, output_dir: Path, formats: List[str]) -> Dict[str, int]:
+    def convert_all(self, output_dir: Path, formats: List[str], force: bool = False) -> Dict[str, int]:
         """
         Convert all JSONL files in output directory to specified formats.
 
@@ -112,13 +250,15 @@ class FormatConverter:
         once and written to all requested formats.
 
         Uses incremental conversion - skips files where all output formats
-        are newer than the input JSONL file.
+        are newer than the input JSONL file (unless force=True).
 
         Args:
             output_dir: Root output directory containing project folders.
                         Each project folder should contain *.jsonl files.
             formats: List of formats to generate. Valid values:
                      'markdown', 'html', 'data'
+            force: If True, regenerate all files regardless of timestamps.
+                   Default is False (incremental conversion).
 
         Returns:
             dict: Conversion statistics with keys:
@@ -142,14 +282,15 @@ class FormatConverter:
                 session_id = jsonl_file.stem
                 input_mtime = jsonl_file.stat().st_mtime
 
-                # Check if conversion is needed (incremental)
-                needs_conversion = self._needs_conversion(
-                    project_dir, session_id, formats, input_mtime
-                )
+                # Check if conversion is needed (incremental), skip check if force=True
+                if not force:
+                    needs_conversion = self._needs_conversion(
+                        project_dir, session_id, formats, input_mtime
+                    )
 
-                if not needs_conversion:
-                    result["skipped"] += 1
-                    continue
+                    if not needs_conversion:
+                        result["skipped"] += 1
+                        continue
 
                 # Parse the file once
                 messages = self.parser.parse_file_as_dicts(jsonl_file)
@@ -297,28 +438,54 @@ class FormatConverter:
         - Navigation bar linking to index and stats pages
         - Shared CSS design system for consistency
         - Color-coded message cards with left border accents
-        - Responsive layout (max-width: 900px, centered)
-        - Collapsible <details> for thinking blocks
-        - Pre-formatted tool inputs/outputs
-
-        Color scheme:
-        - User messages: Blue (#3b82f6)
-        - Assistant messages: Green (#10b981)
-        - Tool operations: Orange (#f59e0b)
+        - Grouped consecutive tool calls for compact display
+        - Markdown-to-HTML conversion for content
+        - Diff rendering with syntax highlighting
+        - Extended session statistics in header
 
         Args:
             messages: List of parsed message dictionaries
             output_path: Path for output .html file
             session_id: Session identifier for page title and header
         """
-        # Get metadata
-        timestamp_str = ""
-        if messages and messages[0].get("timestamp"):
-            dt = parse_timestamp(messages[0]["timestamp"])
-            if dt:
-                timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        # Calculate session statistics
+        timestamps = [parse_timestamp(m.get("timestamp", "")) for m in messages if m.get("timestamp")]
+        timestamps = [t for t in timestamps if t is not None]
 
-        # Session-specific CSS additions with terminal-like styling
+        timestamp_str = ""
+        duration_str = ""
+        end_time_str = ""
+        if timestamps:
+            timestamp_str = min(timestamps).strftime("%Y-%m-%d %H:%M UTC")
+            end_time_str = max(timestamps).strftime("%H:%M UTC")
+            duration_mins = (max(timestamps) - min(timestamps)).total_seconds() / 60
+            duration_str = format_duration_human(duration_mins)
+
+        # Count message types and tokens
+        user_msgs = sum(1 for m in messages if m.get("type") == "user")
+        assistant_msgs = sum(1 for m in messages if m.get("type") == "assistant")
+        tool_uses = sum(1 for m in messages if m.get("type") == "tool_use")
+        tool_results = sum(1 for m in messages if m.get("type") == "tool_result")
+
+        total_input_tokens = 0
+        total_output_tokens = 0
+        for msg in messages:
+            usage = msg.get("usage")
+            if usage:
+                total_input_tokens += usage.get("input_tokens", 0)
+                total_output_tokens += usage.get("output_tokens", 0)
+        total_tokens = total_input_tokens + total_output_tokens
+
+        # Count unique tools used
+        tools_used = set()
+        for m in messages:
+            if m.get("type") == "tool_use":
+                tools_used.add(m.get("tool_name", ""))
+            if m.get("tool_calls"):
+                for tc in m.get("tool_calls"):
+                    tools_used.add(tc.get("name", ""))
+
+        # Session-specific CSS with improved styling
         session_css = """
 .messages-container { max-width: 900px; margin: 0 auto; }
 .session-header {
@@ -329,12 +496,15 @@ class FormatConverter:
     box-shadow: var(--shadow);
 }
 .session-header h1 { font-size: 1.5rem; margin: 0 0 12px 0; }
-.session-meta { display: flex; gap: 24px; flex-wrap: wrap; font-size: 0.875rem; color: var(--muted); }
-.session-meta span { display: flex; align-items: center; gap: 6px; }
+.session-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.session-meta span { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--bg-alt); border-radius: 4px; }
+.session-meta strong { color: var(--text); }
+.session-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.stat-badge { font-size: 0.7rem; padding: 3px 8px; border-radius: 12px; background: var(--primary-light); color: var(--primary); }
 .message {
     background: var(--card);
     padding: 16px 20px;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow);
     position: relative;
@@ -342,70 +512,28 @@ class FormatConverter:
 .message.user { border-left: 4px solid var(--user-color); }
 .message.assistant { border-left: 4px solid var(--assistant-color); }
 .message.tool { border-left: 4px solid var(--tool-color); background: #fffbf5; }
+.message.tool-group { padding: 12px 16px; }
 .role {
     font-weight: 600;
-    font-size: 0.875rem;
-    margin-bottom: 12px;
+    font-size: 0.8rem;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 8px;
 }
 .role-user { color: var(--user-color); }
-.role-user::before { content: '❯ '; color: var(--user-color); }
+.role-user::before { content: '❯ '; }
 .role-assistant { color: var(--assistant-color); }
-.role-assistant::before { content: '◆ '; color: var(--assistant-color); }
+.role-assistant::before { content: '◆ '; }
 .role-tool { color: var(--tool-color); }
-.role-tool::before { content: '⚙ '; color: var(--tool-color); }
+.role-tool::before { content: '⚙ '; }
 .content {
-    white-space: pre-wrap;
-    word-wrap: break-word;
     line-height: 1.7;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
-/* Code block styling - terminal like */
-.content-code {
-    background: #1e1e1e;
-    color: #d4d4d4;
-    padding: 16px;
-    border-radius: var(--radius-sm);
-    overflow-x: auto;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
-    font-size: 0.9em;
-    line-height: 1.5;
-    margin: 12px 0;
-    border: 1px solid #333;
-}
-.content-code .line-number {
-    color: #6e7681;
-    user-select: none;
-    padding-right: 16px;
-    text-align: right;
-    min-width: 40px;
-    display: inline-block;
-}
-/* Syntax highlighting classes */
-.content-code .keyword { color: #c586c0; }
-.content-code .string { color: #ce9178; }
-.content-code .comment { color: #6a9955; }
-.content-code .function { color: #dcdcaa; }
-.content-code .number { color: #b5cea8; }
-.content-code .operator { color: #d4d4d4; }
-.thinking {
-    background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
-    border: 1px solid #c4b5fd;
-    border-radius: var(--radius-sm);
-    padding: 12px;
-    margin-bottom: 12px;
-    font-size: 0.9em;
-    color: #6b21a8;
-}
-[data-theme="dark"] .thinking {
-    background: linear-gradient(135deg, #2e1065 0%, #1e1b4b 100%);
-    border-color: #4c1d95;
-    color: #c4b5fd;
-}
-.thinking summary { cursor: pointer; font-weight: 600; }
-.thinking summary::before { content: '🧠 '; }
+.content h2, .content h3, .content h4 { margin: 16px 0 8px 0; }
+.content blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--muted); margin: 8px 0; }
+/* Code styling */
 pre {
     background: #1e1e1e;
     color: #d4d4d4;
@@ -415,56 +543,96 @@ pre {
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
     font-size: 0.85em;
     border: 1px solid #333;
+    margin: 8px 0;
 }
+pre code { background: none; padding: 0; }
 code {
     background: var(--bg-alt);
     padding: 2px 6px;
     border-radius: 4px;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+    font-size: 0.9em;
 }
+.keyword { color: #c586c0; }
+.string { color: #ce9178; }
+.comment { color: #6a9955; }
+.number { color: #b5cea8; }
+/* Diff styling */
+.diff-add { background: #22863a20; color: #22863a; display: block; }
+.diff-del { background: #cb253720; color: #cb2537; display: block; }
+.diff-info { color: #0366d6; font-weight: bold; display: block; }
+[data-theme="dark"] .diff-add { background: #23863a30; color: #85e89d; }
+[data-theme="dark"] .diff-del { background: #cb253730; color: #f97583; }
+[data-theme="dark"] .diff-info { color: #79b8ff; }
+/* Thinking */
+.thinking {
+    background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+    border: 1px solid #c4b5fd;
+    border-radius: var(--radius-sm);
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 0.85em;
+    color: #6b21a8;
+}
+[data-theme="dark"] .thinking {
+    background: linear-gradient(135deg, #2e1065 0%, #1e1b4b 100%);
+    border-color: #4c1d95;
+    color: #c4b5fd;
+}
+.thinking summary { cursor: pointer; font-weight: 600; }
+.thinking summary::before { content: '🧠 '; }
+/* Tool calls */
 .tool-call {
     background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
     color: #92400e;
-    padding: 10px 14px;
+    padding: 8px 12px;
     border-radius: var(--radius-sm);
-    margin-top: 10px;
-    font-size: 0.875rem;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+    margin-top: 8px;
+    font-size: 0.8rem;
+    font-family: 'SF Mono', Monaco, monospace;
     border: 1px solid #f59e0b;
-    display: flex;
-    align-items: center;
-    gap: 8px;
 }
-.tool-call::before { content: '⚡'; }
+.tool-call::before { content: '⚡ '; }
 [data-theme="dark"] .tool-call {
     background: linear-gradient(135deg, #451a03 0%, #78350f 100%);
     color: #fde68a;
     border-color: #b45309;
 }
 [data-theme="dark"] .message.tool { background: #2d2006; }
-/* Tool result styling */
-.tool-result {
-    background: #f0fdf4;
-    border: 1px solid #86efac;
-    border-radius: var(--radius-sm);
-    padding: 12px;
-    margin-top: 8px;
+/* Tool group compact */
+.tool-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
 }
-.tool-result.error {
-    background: #fef2f2;
-    border-color: #fca5a5;
+.tool-group-badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--tool-color);
+    color: white;
 }
-[data-theme="dark"] .tool-result {
-    background: #14532d;
-    border-color: #22c55e;
+.tool-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.8rem;
 }
-[data-theme="dark"] .tool-result.error {
-    background: #7f1d1d;
-    border-color: #ef4444;
-}
-/* Timestamp styling */
+.tool-item:last-child { border-bottom: none; }
+.tool-item-name { font-weight: 600; color: var(--tool-color); min-width: 80px; }
+.tool-item-detail { color: var(--muted); font-family: monospace; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-item-status { margin-left: auto; font-size: 0.7rem; }
+.tool-item-status.success { color: #22c55e; }
+.tool-item-status.error { color: #ef4444; }
+/* Collapsible details */
+details.tool-details { margin-top: 8px; }
+details.tool-details summary { cursor: pointer; font-size: 0.75rem; color: var(--muted); }
+details.tool-details pre { margin-top: 8px; font-size: 0.75em; max-height: 200px; overflow-y: auto; }
 .timestamp {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--muted);
     position: absolute;
     top: 8px;
@@ -500,9 +668,16 @@ code {
         <div class="session-header">
             <h1>Conversation Log</h1>
             <div class="session-meta">
-                <span><strong>Session:</strong> {html.escape(session_id[:24])}...</span>
+                <span><strong>Session:</strong> {html.escape(session_id[:20])}...</span>
                 <span><strong>Date:</strong> {html.escape(timestamp_str)}</span>
-                <span><strong>Messages:</strong> {len(messages)}</span>
+                {f'<span><strong>Duration:</strong> {html.escape(duration_str)}</span>' if duration_str else ''}
+            </div>
+            <div class="session-stats">
+                <span class="stat-badge">👤 {user_msgs} user</span>
+                <span class="stat-badge">🤖 {assistant_msgs} assistant</span>
+                <span class="stat-badge">🔧 {tool_uses} tool calls</span>
+                <span class="stat-badge">📊 {total_tokens:,} tokens</span>
+                {f'<span class="stat-badge">🛠️ {len(tools_used)} tools</span>' if tools_used else ''}
             </div>
         </div>
 
@@ -512,56 +687,132 @@ code {
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html_content)
 
-            for msg in messages:
+            # Group consecutive tool messages
+            i = 0
+            while i < len(messages):
+                msg = messages[i]
                 msg_type = msg.get("type")
-                content = html.escape(msg.get("content", ""))
 
                 if msg_type == "user":
+                    content = markdown_to_html(msg.get("content", ""))
                     f.write('            <div class="message user">\n')
                     f.write('                <div class="role role-user">User</div>\n')
                     f.write(f'                <div class="content">{content}</div>\n')
                     f.write('            </div>\n')
+                    i += 1
 
                 elif msg_type == "assistant":
-                    # Skip assistant messages with no content, thinking, or tool calls
                     thinking = msg.get("thinking")
                     tool_calls = msg.get("tool_calls")
+                    content = msg.get("content", "")
                     if not content and not thinking and not tool_calls:
+                        i += 1
                         continue
 
                     f.write('            <div class="message assistant">\n')
                     f.write('                <div class="role role-assistant">Claude</div>\n')
 
-                    # Thinking
                     if thinking:
                         f.write('                <details class="thinking">\n')
                         f.write('                    <summary>Thinking</summary>\n')
-                        f.write(f'                    <p>{html.escape(thinking)}</p>\n')
+                        f.write(f'                    <div>{html.escape(thinking[:3000])}{"..." if len(thinking) > 3000 else ""}</div>\n')
                         f.write('                </details>\n')
 
                     if content:
-                        f.write(f'                <div class="content">{content}</div>\n')
+                        rendered = markdown_to_html(content)
+                        f.write(f'                <div class="content">{rendered}</div>\n')
 
-                    # Show tool calls inline if present
                     if tool_calls:
                         for tc in tool_calls:
                             tool_name = html.escape(tc.get("name", "unknown"))
-                            f.write(f'                <div class="tool-call"><strong>Tool:</strong> {tool_name}</div>\n')
+                            f.write(f'                <div class="tool-call"><strong>{tool_name}</strong></div>\n')
 
                     f.write('            </div>\n')
+                    i += 1
 
                 elif msg_type in ["tool_use", "tool_result"]:
-                    f.write('            <div class="message tool">\n')
-                    if msg_type == "tool_use":
-                        tool_name = html.escape(msg.get("tool_name", "unknown"))
-                        f.write(f'                <div class="role role-tool">Tool: {tool_name}</div>\n')
-                        tool_input = json.dumps(msg.get("tool_input", {}), indent=INDENT, ensure_ascii=False)
-                        f.write(f'                <pre>{html.escape(tool_input)}</pre>\n')
-                    else:
-                        f.write('                <div class="role role-tool">Tool Result</div>\n')
-                        output = html.escape(msg.get("output", "")[:2000])
-                        f.write(f'                <pre>{output}</pre>\n')
-                    f.write('            </div>\n')
+                    # Collect consecutive tool messages into a group
+                    tool_group = []
+                    while i < len(messages) and messages[i].get("type") in ["tool_use", "tool_result"]:
+                        tool_group.append(messages[i])
+                        i += 1
+
+                    # Render tool group compactly
+                    if len(tool_group) > 0:
+                        f.write('            <div class="message tool tool-group">\n')
+                        f.write('                <div class="tool-group-header">\n')
+                        f.write('                    <span class="role role-tool">Tools</span>\n')
+                        f.write(f'                    <span class="tool-group-badge">{len(tool_group)} operations</span>\n')
+                        f.write('                </div>\n')
+
+                        # Group tool_use with its following tool_result
+                        j = 0
+                        while j < len(tool_group):
+                            tm = tool_group[j]
+                            if tm.get("type") == "tool_use":
+                                tool_name = html.escape(tm.get("tool_name", "unknown"))
+                                tool_input = tm.get("tool_input", {})
+
+                                # Get brief description of what the tool is doing
+                                detail = ""
+                                if tool_name == "Read":
+                                    detail = tool_input.get("file_path", "")[:50]
+                                elif tool_name == "Edit":
+                                    detail = tool_input.get("file_path", "")[:50]
+                                elif tool_name == "Write":
+                                    detail = tool_input.get("file_path", "")[:50]
+                                elif tool_name == "Bash":
+                                    detail = tool_input.get("command", "")[:60]
+                                elif tool_name == "Grep":
+                                    detail = f"pattern: {tool_input.get('pattern', '')[:30]}"
+                                elif tool_name == "Glob":
+                                    detail = tool_input.get("pattern", "")[:40]
+                                else:
+                                    # Generic detail
+                                    detail = str(tool_input)[:50]
+
+                                # Check if next message is the result
+                                status = ""
+                                if j + 1 < len(tool_group) and tool_group[j + 1].get("type") == "tool_result":
+                                    result = tool_group[j + 1]
+                                    if result.get("error"):
+                                        status = '<span class="tool-item-status error">✗</span>'
+                                    else:
+                                        status = '<span class="tool-item-status success">✓</span>'
+
+                                f.write(f'                <div class="tool-item">\n')
+                                f.write(f'                    <span class="tool-item-name">{tool_name}</span>\n')
+                                f.write(f'                    <span class="tool-item-detail" title="{html.escape(str(tool_input)[:200])}">{html.escape(detail)}</span>\n')
+                                f.write(f'                    {status}\n')
+                                f.write(f'                </div>\n')
+
+                            j += 1
+
+                        # Add collapsible details for full output
+                        f.write('                <details class="tool-details">\n')
+                        f.write('                    <summary>Show full tool details</summary>\n')
+                        for tm in tool_group:
+                            if tm.get("type") == "tool_use":
+                                tool_name = html.escape(tm.get("tool_name", "unknown"))
+                                tool_input = json.dumps(tm.get("tool_input", {}), indent=2, ensure_ascii=False)
+                                f.write(f'                    <strong>{tool_name}</strong>\n')
+                                f.write(f'                    <pre>{html.escape(tool_input)}</pre>\n')
+                            elif tm.get("type") == "tool_result":
+                                output = tm.get("output", "")[:2000]
+                                error = tm.get("error")
+                                if error:
+                                    f.write(f'                    <pre class="error" style="background:#fef2f2;color:#b91c1c;">Error: {html.escape(str(error))}</pre>\n')
+                                elif output:
+                                    # Check if this is diff content
+                                    if is_diff_content(output):
+                                        rendered = render_diff(output)
+                                        f.write(f'                    <pre>{rendered}</pre>\n')
+                                    else:
+                                        f.write(f'                    <pre>{html.escape(output)}</pre>\n')
+                        f.write('                </details>\n')
+                        f.write('            </div>\n')
+                else:
+                    i += 1
 
             f.write("""        </div>
 
@@ -576,10 +827,9 @@ code {
         """
         Write messages as structured JSON data file.
 
-        Generates a JSON file with three sections:
-        - metadata: Session identification and timing info
-        - statistics: Computed message counts and token usage
-        - messages: Complete array of parsed messages
+        Generates a comprehensive JSON file that serves as the source of truth
+        for HTML rendering. Contains all computed statistics and metadata needed
+        to regenerate HTML without re-processing the original JSONL.
 
         Output structure:
             {
@@ -587,15 +837,20 @@ code {
                     "session_id": "...",
                     "source_file": "/path/to/source.jsonl",
                     "start_time": "2024-01-15T10:00:00+00:00",
-                    "end_time": "2024-01-15T11:00:00+00:00"
+                    "end_time": "2024-01-15T11:00:00+00:00",
+                    "duration_minutes": 60.0
                 },
                 "statistics": {
                     "total_messages": 42,
                     "user_messages": 20,
                     "assistant_messages": 22,
+                    "tool_uses": 15,
+                    "tool_results": 15,
                     "total_input_tokens": 5000,
                     "total_output_tokens": 10000,
-                    "total_tokens": 15000
+                    "total_tokens": 15000,
+                    "cache_read_tokens": 1000,
+                    "tools_used": ["Read", "Write", "Bash"]
                 },
                 "messages": [...]
             }
@@ -606,37 +861,62 @@ code {
             session_id: Session identifier
             source_file: Path to original JSONL file (stored in metadata)
         """
-        # Get session metadata from first message
-        metadata = {}
+        # Parse all timestamps for duration calculation
+        timestamps = []
+        for m in messages:
+            if m.get("timestamp"):
+                dt = parse_timestamp(m["timestamp"])
+                if dt:
+                    timestamps.append(dt)
+
+        # Build metadata
+        metadata = {
+            "session_id": session_id,
+            "source_file": str(source_file),
+        }
+
         if messages:
             first = messages[0]
-            metadata = {
-                "session_id": first.get("session_id") or session_id,
-                "source_file": str(source_file),
-            }
+            if first.get("session_id"):
+                metadata["session_id"] = first["session_id"]
 
-            if first.get("timestamp"):
-                dt = parse_timestamp(first["timestamp"])
-                if dt:
-                    metadata["start_time"] = dt.isoformat()
+        if timestamps:
+            metadata["start_time"] = min(timestamps).isoformat()
+            metadata["end_time"] = max(timestamps).isoformat()
+            duration_mins = (max(timestamps) - min(timestamps)).total_seconds() / 60
+            metadata["duration_minutes"] = round(duration_mins, 1)
 
-        # Get end time from last message
-        if messages and messages[-1].get("timestamp"):
-            dt = parse_timestamp(messages[-1]["timestamp"])
-            if dt:
-                metadata["end_time"] = dt.isoformat()
-
-        # Calculate statistics
+        # Calculate comprehensive statistics
         user_messages = [m for m in messages if m.get("type") == "user"]
         assistant_messages = [m for m in messages if m.get("type") == "assistant"]
+        tool_uses = [m for m in messages if m.get("type") == "tool_use"]
+        tool_results = [m for m in messages if m.get("type") == "tool_result"]
 
         total_input_tokens = 0
         total_output_tokens = 0
-        for msg in assistant_messages:
+        cache_read_tokens = 0
+        for msg in messages:
             usage = msg.get("usage")
             if usage:
                 total_input_tokens += usage.get("input_tokens", 0)
                 total_output_tokens += usage.get("output_tokens", 0)
+                cache_read_tokens += usage.get("cache_read_input_tokens", 0)
+
+        # Collect unique tools used
+        tools_used = set()
+        for m in messages:
+            if m.get("type") == "tool_use":
+                tool_name = m.get("tool_name")
+                if tool_name:
+                    tools_used.add(tool_name)
+            if m.get("tool_calls"):
+                for tc in m.get("tool_calls"):
+                    tool_name = tc.get("name")
+                    if tool_name:
+                        tools_used.add(tool_name)
+
+        # Count tool errors
+        tool_errors = sum(1 for m in tool_results if m.get("is_error"))
 
         output_data = {
             "metadata": metadata,
@@ -644,12 +924,82 @@ code {
                 "total_messages": len(messages),
                 "user_messages": len(user_messages),
                 "assistant_messages": len(assistant_messages),
+                "tool_uses": len(tool_uses),
+                "tool_results": len(tool_results),
+                "tool_errors": tool_errors,
                 "total_input_tokens": total_input_tokens,
                 "total_output_tokens": total_output_tokens,
                 "total_tokens": total_input_tokens + total_output_tokens,
+                "cache_read_tokens": cache_read_tokens,
+                "tools_used": sorted(list(tools_used)),
             },
             "messages": messages,
         }
 
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(output_data, f, indent=INDENT, ensure_ascii=False)
+
+    def regenerate_html_from_json(self, json_path: Path, html_path: Path) -> bool:
+        """
+        Regenerate HTML from an existing JSON data file.
+
+        This enables the JSON + HTML renderer pattern where JSON is the
+        source of truth and HTML can be regenerated without re-parsing JSONL.
+
+        Args:
+            json_path: Path to the JSON data file
+            html_path: Path for the output HTML file
+
+        Returns:
+            True if HTML was successfully generated, False otherwise
+        """
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            messages = data.get("messages", [])
+            metadata = data.get("metadata", {})
+            session_id = metadata.get("session_id", json_path.stem)
+
+            self._write_html(messages, html_path, session_id)
+            return True
+        except Exception as e:
+            print(f"  Error regenerating HTML from {json_path}: {e}")
+            return False
+
+    def regenerate_all_html(self, output_dir: Path) -> Dict[str, int]:
+        """
+        Regenerate all HTML files from existing JSON data files.
+
+        Walks through the output directory and regenerates HTML for each
+        project that has JSON data files. This is useful when HTML styling
+        changes and you want to regenerate without re-processing JSONL.
+
+        Args:
+            output_dir: Root output directory containing project subdirectories
+
+        Returns:
+            Dictionary with counts: {"regenerated": N, "errors": M}
+        """
+        result = {"regenerated": 0, "errors": 0}
+
+        for project_dir in output_dir.iterdir():
+            if not project_dir.is_dir():
+                continue
+
+            data_dir = project_dir / "data"
+            html_dir = project_dir / "html"
+
+            if not data_dir.exists():
+                continue
+
+            html_dir.mkdir(parents=True, exist_ok=True)
+
+            for json_file in data_dir.glob("*.json"):
+                html_file = html_dir / f"{json_file.stem}.html"
+                if self.regenerate_html_from_json(json_file, html_file):
+                    result["regenerated"] += 1
+                else:
+                    result["errors"] += 1
+
+        return result

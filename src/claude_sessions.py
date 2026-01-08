@@ -164,6 +164,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
             - input: Input directory path
             - output: Output directory path (may be None)
             - format: Format string (e.g., "markdown,html,data")
+            - overwrite: Force regeneration of all files
 
     Raises:
         SystemExit: If input directory doesn't exist
@@ -172,6 +173,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
     base_output_dir = get_output_dir(args.output)
     output_dir = base_output_dir / OUTPUT_SUBFOLDER
     formats = parse_formats(args.format)
+    force = getattr(args, 'overwrite', False)
 
     print("=" * 60)
     print("CLAUDE SESSIONS BACKUP")
@@ -179,6 +181,8 @@ def cmd_backup(args: argparse.Namespace) -> None:
     print(f"Input:   {input_dir}")
     print(f"Output:  {output_dir}")
     print(f"Formats: {', '.join(formats)}")
+    if force:
+        print("Mode:    Force overwrite (all files)")
     print("=" * 60)
     print()
 
@@ -198,7 +202,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
 
     # Step 1: Perform incremental backup
     print("[1/5] Backing up session files...")
-    backup_result = backup_mgr.backup()
+    backup_result = backup_mgr.backup(force=force)
 
     print(f"  - Projects found: {backup_result['projects_found']}")
     print(f"  - Files copied: {backup_result['files_copied']}")
@@ -208,7 +212,7 @@ def cmd_backup(args: argparse.Namespace) -> None:
 
     # Step 2: Convert to requested formats
     print("[2/5] Converting to output formats...")
-    convert_result = formatter.convert_all(output_dir, formats)
+    convert_result = formatter.convert_all(output_dir, formats, force=force)
 
     print(f"  - Markdown files: {convert_result.get('markdown', 0)}")
     print(f"  - HTML files: {convert_result.get('html', 0)}")
@@ -460,6 +464,59 @@ def cmd_list(args: argparse.Namespace) -> None:
         print("All files are backed up.")
 
 
+def cmd_regenerate_html(args: argparse.Namespace) -> None:
+    """
+    Execute the regenerate-html command.
+
+    Regenerates all HTML files from existing JSON data files in the output
+    directory. This is useful when HTML styling changes and you want to
+    regenerate without re-processing the original JSONL files.
+
+    The JSON data files serve as the source of truth, enabling the
+    JSON + HTML renderer pattern where:
+        1. JSONL files are parsed and converted to JSON (with statistics)
+        2. HTML is generated from JSON (can be regenerated independently)
+
+    Args:
+        args: Parsed command line arguments containing:
+            - output: Optional output directory path
+
+    Prints progress and summary to stdout.
+    """
+    output_dir = get_output_dir(args.output)
+    output_dir = output_dir / OUTPUT_SUBFOLDER
+
+    if not output_dir.exists():
+        print(f"Error: Output directory does not exist: {output_dir}")
+        print("Run --backup first to create JSON data files.")
+        sys.exit(1)
+
+    print("=" * 60)
+    print("REGENERATING HTML FROM JSON")
+    print("=" * 60)
+    print(f"Output directory: {output_dir}")
+    print()
+
+    print("[1/2] Regenerating session HTML files...")
+    converter = FormatConverter()
+    result = converter.regenerate_all_html(output_dir)
+    print(f"  - Regenerated: {result['regenerated']}")
+    if result['errors'] > 0:
+        print(f"  - Errors: {result['errors']}")
+
+    print()
+    print("[2/2] Regenerating index page...")
+    from .html_generator import HtmlGenerator
+    html_gen = HtmlGenerator()
+    html_gen.generate_index(output_dir)
+    print(f"  - Index page: {output_dir / 'index.html'}")
+
+    print()
+    print("=" * 60)
+    print("REGENERATION COMPLETE")
+    print("=" * 60)
+
+
 def main() -> None:
     """
     Main entry point for the claude-sessions CLI.
@@ -488,6 +545,8 @@ Examples:
   claude-sessions --format markdown,html    # Only generate specific formats
   claude-sessions --search -q "python"      # Search for "python"
   claude-sessions --search --mode regex -q "import\\s+\\w+"  # Regex search
+  claude-sessions --regenerate-html         # Regenerate HTML from JSON data
+  claude-sessions --overwrite               # Force regenerate all files
 
 Environment Variables:
   OUT_DIR       Default output directory for backups
@@ -530,6 +589,11 @@ Output Structure:
         action="store_true",
         help="Search conversations"
     )
+    mode_group.add_argument(
+        "--regenerate-html",
+        action="store_true",
+        help="Regenerate HTML from existing JSON data files"
+    )
 
     # Path arguments
     parser.add_argument(
@@ -550,6 +614,13 @@ Output Structure:
         type=str,
         default=DEFAULT_FORMATS,
         help=f"Output formats, comma-separated (default: {DEFAULT_FORMATS})"
+    )
+
+    # Overwrite option
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Force regeneration of all files, ignoring timestamps"
     )
 
     # Search arguments
@@ -590,6 +661,8 @@ Output Structure:
         cmd_list(args)
     elif args.search:
         cmd_search(args)
+    elif getattr(args, 'regenerate_html', False):
+        cmd_regenerate_html(args)
     else:
         cmd_backup(args)
 
