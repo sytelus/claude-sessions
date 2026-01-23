@@ -9,7 +9,7 @@ Backup and analyze Claude Code conversations. Converts JSONL session logs to Mar
 pip install claude-sessions
 
 # From source
-git clone https://github.com/shitalshah/claude-sessions.git
+git clone https://github.com/sytelus/claude-sessions.git
 cd claude-sessions
 pip install -e .
 ```
