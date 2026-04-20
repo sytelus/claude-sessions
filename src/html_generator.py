@@ -496,6 +496,7 @@ a:hover { color: var(--primary-dark); text-decoration: underline; }
     gap: 12px;
 }
 .session-item:hover { background: var(--primary-light); }
+.session-item.clickable { cursor: pointer; }
 .session-info {
     display: flex;
     flex-direction: column;
@@ -912,11 +913,29 @@ function nextPage() {
     }
 }
 
+function initRowLinks() {
+    const rows = document.querySelectorAll('.session-item[data-href]');
+    rows.forEach((row) => {
+        row.addEventListener('click', (event) => {
+            if (event.target.closest('a')) return;
+            const href = row.getAttribute('data-href');
+            if (href) window.location.href = href;
+        });
+        row.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            const href = row.getAttribute('data-href');
+            if (href) window.location.href = href;
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     initSearch();
     if (document.querySelector('.project-list')) {
         updatePagination();
     }
+    initRowLinks();
 });
 """
 
@@ -1306,7 +1325,7 @@ class HtmlGenerator:
                 html_path = f"{session['project']}/html/{session['id']}.html"
                 preview = html.escape(session.get('preview', '')[:60]) if session.get('preview') else ''
                 html_content += f"""
-                    <div class="session-item" style="margin: 0; border-radius: 0; border-bottom: 1px solid var(--border);">
+                    <div class="session-item clickable" data-href="{html.escape(html_path)}" role="link" tabindex="0" style="margin: 0; border-radius: 0; border-bottom: 1px solid var(--border);">
                         <div class="session-info">
                             <span class="session-id">{html.escape(session['project_display'])}</span>
                             <span class="session-date">{html.escape(session.get('date', ''))}</span>
@@ -1421,7 +1440,7 @@ class HtmlGenerator:
                     stats_html += '</span>'
 
                     html_content += f"""
-                                        <div class="session-item">
+                                        <div class="session-item clickable" data-href="{html.escape(html_path)}" role="link" tabindex="0">
                                             <div class="session-info">
                                                 <span class="session-id" title="{html.escape(session_id)}">{html.escape(session_id[:16])}...{stats_html}</span>
                                                 <span class="session-preview" title="{preview}">{preview}</span>
@@ -1462,9 +1481,13 @@ class HtmlGenerator:
                     session_date = session.get("date", "")
                     html_path = f"{proj['name']}/html/{session_id}.html"
                     has_html = session.get("html_exists", False)
+                    row_attrs = (
+                        f' class="session-item clickable" data-href="{html.escape(html_path)}" role="link" tabindex="0"'
+                        if has_html else ' class="session-item"'
+                    )
 
                     html_content += f"""
-                                        <div class="session-item">
+                                        <div{row_attrs}>
                                             <div class="session-info">
                                                 <span class="session-id">{html.escape(session_id[:16])}...</span>
                                                 <span class="session-date">{html.escape(session_date)}</span>
